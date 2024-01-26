@@ -1,0 +1,22 @@
+data:
+  batch_size: 128
+  img_size: 128
+  num_channels: 3
+  num_workers: 4
+  trainpath: ../datasets/SAN_FRANCISCO_ALOS2
+  valid_ratio: 0.1
+logging:
+  logdir: ./logs
+  wandb:
+    project: gen_cvnn
+loss: ComplexMeanSquareError
+model:
+  channels_ratio: 16
+  class: AutoEncoder
+  latent_dim: 1024
+  num_layers: 6
+nepochs: 50
+optim:
+  algo: Adam
+  params:
+    lr: 3.0e-05
