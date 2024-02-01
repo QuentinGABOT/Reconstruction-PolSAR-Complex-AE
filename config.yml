@@ -1,5 +1,5 @@
 data:
-  batch_size: 128
+  batch_size: 8
   img_size: 128
   num_channels: 3
   num_workers: 4
@@ -14,9 +14,9 @@ model:
   channels_ratio: 16
   class: AutoEncoder
   latent_dim: 1024
-  num_layers: 6
+  num_layers: 7
 nepochs: 50
 optim:
   algo: Adam
   params:
-    lr: 3.0e-05
+    lr: 0.0001

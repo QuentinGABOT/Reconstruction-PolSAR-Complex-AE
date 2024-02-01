@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 # from .parts import Up, Down, Dense
-from .parts import Down, Up, OutConv, DoubleConv
+from .parts import Down, Up, OutConv, DoubleConv, Dense
 
 
 class AutoEncoder(nn.Module):
@@ -11,6 +11,8 @@ class AutoEncoder(nn.Module):
         num_channels,
         num_layers,
         channels_ratio,
+        latent_dim,
+        input_size,
     ):
         super(AutoEncoder, self).__init__()
         self.n_channels = num_channels
@@ -21,10 +23,17 @@ class AutoEncoder(nn.Module):
         self.encoder_layers.append(DoubleConv(self.n_channels, current_channels))
         for i in range(1, num_layers):
             out_channels = channels_ratio * 2**i
+            input_size //= 2
             self.encoder_layers.append(Down(current_channels, out_channels))
             current_channels = out_channels
         self.encoder = nn.Sequential(*self.encoder_layers)
-
+        """
+        self.dense = Dense(
+            in_channels=current_channels,
+            latent_dim=latent_dim,
+            input_size=input_size,
+        )
+        """
         # Decoder with halving channels
         self.decoder_layers = []
         for i in range(num_layers - 2, -1, -1):
@@ -36,6 +45,7 @@ class AutoEncoder(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
+        # x = self.dense(x)
         x = self.decoder(x)
         return x
 

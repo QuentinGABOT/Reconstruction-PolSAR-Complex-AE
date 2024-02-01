@@ -101,6 +101,12 @@ def train(config):
         out_conv = model(dummy_input)
 
     model.to(device)
+    """
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name, param.numel())
+    input()
+    """
 
     # Build the loss
     logging.info("= Loss")
@@ -175,11 +181,11 @@ def train(config):
         updated = model_checkpoint.update(test_loss)
 
         logging.info(
-            "[%d/%d] Test_loss loss : %.3f %s"
+            "[%d/%d] Test loss : %.3f %s"
             % (
                 e,
                 config["nepochs"],
-                train_loss,
+                test_loss,
                 "[>> BETTER <<]" if updated else "",
             )
         )
@@ -201,16 +207,16 @@ def train(config):
                     model(img_dataset.unsqueeze_(0).to(device))[0]
                     .cpu()
                     .detach()
-                    .numpy()[0, :, :, :]
+                    .numpy()
                 )
-                img_gens.append(img_gen[0, :, :, :])
+                # img_gens.append(img_gen[0, :, :, :])
             else:
                 img_gen = (
                     model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
                 )
-                img_gens.append(img_gen)
-            img_datasets.append(img_dataset.numpy())
-            # img_gens.append(img_gen[0, :, :, :])
+                # img_gens.append(img_gen)
+            img_datasets.append(img_dataset[0, :, :, :].numpy())
+            img_gens.append(img_gen[0, :, :, :])
 
         image_path = logdir / f"output_{e}.png"
         # Call the modified show_image function

@@ -22,9 +22,6 @@ def build_model(cfg):
     img_size = cfg["data"]["img_size"]
     model = cfg["model"]["class"]
 
-    if model == "VAE":
-        return eval(
-            f"{model}(num_channels, num_layers, channels_ratio, latent_dim, img_size)"
-        )
-    else:
-        return eval(f"{model}(num_channels, num_layers, channels_ratio)")
+    return eval(
+        f"{model}(num_channels, num_layers, channels_ratio, latent_dim, img_size)"
+    )

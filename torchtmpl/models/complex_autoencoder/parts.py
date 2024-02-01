@@ -24,7 +24,7 @@ class DoubleConv(nn.Module):
                 dtype=torch.complex64,
             ),
             c_nn.BatchNorm2d(mid_channels),
-            c_nn.CReLU(),
+            c_nn.modReLU(),
             nn.Conv2d(
                 mid_channels,
                 out_channels,
@@ -34,7 +34,7 @@ class DoubleConv(nn.Module):
                 dtype=torch.complex64,
             ),
             c_nn.BatchNorm2d(out_channels),
-            c_nn.CReLU(),
+            c_nn.modReLU(),
         )
 
     def forward(self, x):
@@ -74,8 +74,26 @@ class OutConv(nn.Module):
         super(OutConv, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, dtype=torch.complex64),
-            c_nn.modReLU(),
         )
 
     def forward(self, x):
         return self.conv(x)
+
+
+class Dense(nn.Module):
+    def __init__(self, in_channels, latent_dim, input_size):
+        super(Dense, self).__init__()
+        # Latent space layers
+        linear = in_channels * input_size * input_size
+        self.dense = nn.Sequential(
+            nn.Flatten(start_dim=1),
+            nn.Linear(linear, latent_dim, dtype=torch.complex64),
+            c_nn.modReLU(),
+            nn.Linear(latent_dim, linear, dtype=torch.complex64),
+            c_nn.modReLU(),
+            nn.Unflatten(dim=1, unflattened_size=(in_channels, input_size, input_size)),
+        )
+
+    def forward(self, x):
+        x = self.dense(x)
+        return x

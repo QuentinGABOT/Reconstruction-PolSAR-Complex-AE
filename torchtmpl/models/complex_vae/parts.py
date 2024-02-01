@@ -34,7 +34,7 @@ class DoubleConv(nn.Module):
                 dtype=torch.complex64,
             ),
             c_nn.BatchNorm2d(out_channels),
-            c_nn.zLeakyReLU(),
+            c_nn.CCELU(),
         )
 
     def forward(self, x):

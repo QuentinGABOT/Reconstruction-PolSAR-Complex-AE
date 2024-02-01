@@ -33,13 +33,12 @@ def show_images(samples, generated, image_path):
 
     for i in range(num_samples):
         img_dataset, img_gen = samples[i], generated[i]
-        print(img_dataset.shape)
-        input()
-        print(img_gen.shape)
-        input()
         # Equalize and transpose if needed
         _, img_dataset = equalize(img_dataset.transpose(1, 2, 0))
         _, img_gen = equalize(img_gen.transpose(1, 2, 0))
+
+        img_dataset = np.round(img_dataset * 255).astype(np.uint8)
+        img_gen = np.round(img_gen * 255).astype(np.uint8)
 
         # Plot dataset image
         axes[i][0].imshow(img_dataset, vmax=1e-1, origin="lower")
@@ -96,11 +95,17 @@ def get_dataloaders(data_config, use_cuda):
 
     logging.info(f"  - I loaded {len(base_dataset)} samples")
 
-    indices = list(range(len(base_dataset)))
+    # indices = list(range(len(base_dataset)))
+    indices = list(range(100))
     random.shuffle(indices)
-    num_valid = int(valid_ratio * len(base_dataset))
-    train_indices = indices[num_valid:]
-    valid_indices = indices[:num_valid]
+    # num_valid = int(valid_ratio * len(base_dataset))
+    num_valid = int(valid_ratio * len(indices))
+    # train_indices = indices[num_valid:]
+    # valid_indices = indices[:num_valid]
+    # train_indices = [78, 98] * 500
+    # valid_indices = [78, 98] * 500
+    train_indices = [98] * 500
+    valid_indices = [98] * 500
 
     train_dataset = torch.utils.data.Subset(base_dataset, train_indices)
     valid_dataset = torch.utils.data.Subset(base_dataset, valid_indices)
