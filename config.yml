@@ -11,6 +11,7 @@ logging:
     project: gen_cvnn
 loss: ComplexMeanSquareError
 model:
+  activation: CReLU
   channels_ratio: 16
   class: AutoEncoder
   latent_dim: 1024

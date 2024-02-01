@@ -3,6 +3,7 @@
 from .complex_autoencoder.model import AutoEncoder
 from .complex_unet.model import UNet
 from .complex_vae.model import VAE
+from torchcvnn.nn.modules.activation import *
 
 """
 def build_model(cfg):
@@ -21,7 +22,9 @@ def build_model(cfg):
     latent_dim = cfg["model"]["latent_dim"]
     img_size = cfg["data"]["img_size"]
     model = cfg["model"]["class"]
+    activation = cfg["model"]["activation"]
+    activation = eval(f"{activation}()")
 
     return eval(
-        f"{model}(num_channels, num_layers, channels_ratio, latent_dim, img_size)"
+        f"{model}(num_channels, num_layers, channels_ratio, latent_dim, img_size, activation)"
     )
