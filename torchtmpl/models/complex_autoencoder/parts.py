@@ -10,7 +10,9 @@ from math import prod
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
 
-    def __init__(self, in_channels, out_channels, activation, mid_channels=None):
+    def __init__(
+        self, in_channels, out_channels, activation, stride=1, mid_channels=None
+    ):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
@@ -19,6 +21,7 @@ class DoubleConv(nn.Module):
                 in_channels,
                 mid_channels,
                 kernel_size=3,
+                stride=stride,
                 padding=1,
                 bias=False,
                 dtype=torch.complex64,
@@ -29,6 +32,7 @@ class DoubleConv(nn.Module):
                 mid_channels,
                 out_channels,
                 kernel_size=3,
+                stride=1,
                 padding=1,
                 bias=False,
                 dtype=torch.complex64,
@@ -47,7 +51,12 @@ class Down(nn.Module):
     def __init__(self, in_channels, out_channels, activation):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
-            c_nn.MaxPool2d(2), DoubleConv(in_channels, out_channels, activation)
+            DoubleConv(
+                in_channels,
+                out_channels,
+                activation,
+                stride=2,
+            ),
         )
 
     def forward(self, x):

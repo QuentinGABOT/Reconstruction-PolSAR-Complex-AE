@@ -11,13 +11,13 @@ logging:
     project: gen_cvnn
 loss: ComplexMeanSquareError
 model:
-  activation: CReLU
+  activation: modReLU
   channels_ratio: 16
   class: AutoEncoder
   latent_dim: 1024
   num_layers: 7
-nepochs: 50
+nepochs: 400
 optim:
   algo: Adam
   params:
-    lr: 0.0001
+    lr: 0.005

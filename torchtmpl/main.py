@@ -68,7 +68,7 @@ def train(config):
         wandb.init(project=wandb_config["project"])
         wandb_log = wandb.log
         wandb_log(config)
-        logging.info("Will be recording in wandb run name : {wandb.run.name}")
+        logging.info(f"Will be recording in wandb run name : {wandb.run.name}")
     else:
         wandb_log = None
 
@@ -160,6 +160,7 @@ def train(config):
         model, logdir, len(input_size), min_is_best=True
     )
 
+    last = False
     for e in range(config["nepochs"]):
         # Train 1 epoch
         train_loss = utils.train_epoch(
@@ -220,7 +221,9 @@ def train(config):
 
         image_path = logdir / f"output_{e}.png"
         # Call the modified show_image function
-        data.show_images(img_datasets, img_gens, image_path)
+        if e == config["nepochs"] - 1:
+            last = True
+        data.show_images(img_datasets, img_gens, image_path, last)
         imgs = Image.open(image_path)
         # Log the image to wandb
         if wandb_log is not None:
