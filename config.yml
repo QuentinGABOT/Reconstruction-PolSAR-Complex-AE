@@ -1,5 +1,15 @@
 data:
   batch_size: 8
+  characteristics:
+    ch_0:
+      max: 110.79493
+      min: 1.4549588e-05
+    ch_1:
+      max: 80.487
+      min: 5.4477514e-06
+    ch_2:
+      max: 125.859604
+      min: 8.398932e-06
   img_size: 128
   num_channels: 3
   num_workers: 4
@@ -12,12 +22,12 @@ logging:
 loss: ComplexMeanSquareError
 model:
   activation: modReLU
-  channels_ratio: 16
+  channels_ratio: 64
   class: AutoEncoder
   latent_dim: 1024
   num_layers: 7
-nepochs: 400
+nepochs: 1000
 optim:
   algo: Adam
   params:
-    lr: 0.005
+    lr: 0.001

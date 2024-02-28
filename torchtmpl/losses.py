@@ -7,21 +7,26 @@ class ComplexMeanSquareError(nn.Module):
         super(ComplexMeanSquareError, self).__init__()
 
     def forward(self, y_true, y_pred):
-        # Ensure y_pred and y_true are torch tensors
-        y_pred = torch.as_tensor(y_pred)
-        y_true = torch.as_tensor(y_true)
-
-        # Handle complex pred but real true
-        if torch.is_complex(y_pred) and not torch.is_complex(y_true):
-            y_true = torch.complex(y_true, torch.zeros_like(y_true))
-
-        # Ensure y_true is the same dtype as y_pred
-        y_true = y_true.type_as(y_pred)
 
         # Calculate Mean Square Error
         mse = torch.mean(torch.square(torch.abs(y_true - y_pred)))
 
         return mse
+
+
+class ComplexHuberLoss(nn.Module):
+    def __init__(self):
+        super(ComplexHuberLoss, self).__init__()
+
+    def forward(self, y_true, y_pred, delta=1.0):
+
+        # Calculate Huber Loss
+        l1 = torch.abs(y_true - y_pred)
+        if l1 < delta:
+            huber = delta*(torch.abs(y_true - y_pred) ** 2)
+        else:
+            huber = torch.mean(delta * (torch.abs(y_true - y_pred) - 0.5 * delta))
+        return huber
 
 
 class ComplexVAELoss(nn.Module):

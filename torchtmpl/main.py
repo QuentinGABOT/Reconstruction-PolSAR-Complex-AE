@@ -15,6 +15,7 @@ import torch.nn as nn
 import torchinfo.torchinfo as torchinfo
 import torchcvnn.nn.modules as c_nn
 from PIL import Image
+import numpy as np
 
 # Local imports
 from . import data
@@ -30,6 +31,15 @@ def init_weights(m):
         c_nn.init.complex_kaiming_normal_(m.weight, nonlinearity="relu")
         # nn.init.kaiming_normal_(m.weight)
         m.bias.data.fill_(0.01)
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def train(config):
@@ -59,6 +69,7 @@ def train(config):
         ```
 
     """
+    seed_everything(2000)
     cdtype = torch.complex64
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda") if use_cuda else torch.device("cpu")
@@ -160,8 +171,8 @@ def train(config):
         model, logdir, len(input_size), min_is_best=True
     )
 
-    last = False
-    for e in range(config["nepochs"]):
+    for e in range(config["nepochs"] + 1):
+        last = False
         # Train 1 epoch
         train_loss = utils.train_epoch(
             model=model,
@@ -221,7 +232,7 @@ def train(config):
 
         image_path = logdir / f"output_{e}.png"
         # Call the modified show_image function
-        if e == config["nepochs"] - 1:
+        if e % 10 == 0:
             last = True
         data.show_images(img_datasets, img_gens, image_path, last)
         imgs = Image.open(image_path)
@@ -234,34 +245,6 @@ def train(config):
 
     wandb.finish()
 
-
-"""
-def test_imgs():
-    # Dataloading
-    train_valid_dataset = torchcvnn.datasets.dataPolSFAlos2Dataset()
-    # Train dataloader
-    train_dataset = torch.utils.data.Subset(
-        train_valid_dataset, list(range(len(train_valid_dataset)))
-    )
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    autoencoder = AutoEncoder(num_channels=3)
-    autoencoder.load_state_dict(torch.load("./logs/AutoEncoder_0/best_model.pt"))
-    # autoencoder = onnx.load("my_image_classifier.onnx")
-    # onnx.checker.check_model(autoencoder)
-    autoencoder.to(device)
-
-    for i in range(0, 10):
-        i = 1
-        stack, _ = train_dataset[i]
-        show_image(stack.numpy())
-        show_image(
-            autoencoder(stack[None, :, :, :].to(device))
-            .cpu()
-            .detach()
-            .numpy()[0, :, :, :]
-        )
-"""
 
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
