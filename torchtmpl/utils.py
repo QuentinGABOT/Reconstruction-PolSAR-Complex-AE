@@ -48,6 +48,7 @@ def train_epoch(
     f_loss: nn.Module,
     optim: torch.optim.Optimizer,
     device: torch.device,
+    config,
 ) -> Tuple[float, float]:
     """
     Run the training loop for nsteps minibatches of the dataloader
@@ -66,22 +67,43 @@ def train_epoch(
     model.train()
 
     loss_avg = 0
+    recon_loss_avg = 0
+    kld_avg = 0
+
     num_samples = 0
+    gradient_norm = 0
     for inputs in tqdm.tqdm(loader):
         inputs = Variable(inputs).to(device)
         # Forward propagate through the model
         if isinstance(model, VAE):
-            pred_outputs, mu, logvar = model(inputs)
+            pred_outputs, mu, sigma, delta = model(inputs)
         else:
             pred_outputs = model(inputs)
         if isinstance(f_loss, ComplexVAELoss):
-            loss = f_loss(x=inputs, recon_x=pred_outputs, mu=mu, logvar=logvar)
+            loss, recon_loss, kld = f_loss(
+                x=inputs,
+                recon_x=pred_outputs,
+                mu=mu,
+                sigma=sigma,
+                delta=delta,
+                kld_weight=config["loss"]["kld_weight"],
+            )
         else:
             loss = f_loss(pred_outputs, inputs)
 
         # Backward pass and update
         optim.zero_grad()
         loss.backward()
+
+        # Compute the norm of the gradients
+        total_norm = 0.0
+        for param in model.parameters():
+            if param.grad is not None:
+                param_norm = param.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm**0.5
+        gradient_norm += total_norm
+
         optim.step()
 
         num_samples += inputs.shape[0]
@@ -89,8 +111,15 @@ def train_epoch(
         # Denormalize the loss that is supposed to be averaged over the
         # minibatch
         loss_avg += inputs.shape[0] * loss.item()
+        recon_loss_avg += inputs.shape[0] * recon_loss.item()
+        kld_avg += inputs.shape[0] * kld.item()
 
-    return loss_avg / num_samples
+    return (
+        loss_avg / num_samples,
+        gradient_norm / num_samples,
+        recon_loss_avg / num_samples,
+        kld_avg / num_samples,
+    )
 
 
 def test_epoch(
@@ -98,6 +127,7 @@ def test_epoch(
     loader: torch.utils.data.DataLoader,
     f_loss: nn.Module,
     device: torch.device,
+    config,
 ) -> Tuple[float, float]:
     """
     Run the test loop for n_test_batches minibatches of the dataloader
@@ -116,26 +146,37 @@ def test_epoch(
     model.eval()
 
     loss_avg = 0
+    recon_loss_avg = 0
+    kld_avg = 0
     num_samples = 0
     with torch.no_grad():
         for inputs in loader:
             inputs = Variable(inputs).to(device)
             # Forward propagate through the model
 
-        if isinstance(model, VAE):
-            pred_outputs, mu, logvar = model(inputs)
-        else:
-            pred_outputs = model(inputs)
-        if isinstance(f_loss, ComplexVAELoss):
-            loss = f_loss(x=inputs, recon_x=pred_outputs, mu=mu, logvar=logvar)
-        else:
-            loss = f_loss(pred_outputs, inputs)
+            if isinstance(model, VAE):
+                pred_outputs, mu, sigma, delta = model(inputs)
+            else:
+                pred_outputs = model(inputs)
+            if isinstance(f_loss, ComplexVAELoss):
+                loss, recon_loss, kld = f_loss(
+                    x=inputs,
+                    recon_x=pred_outputs,
+                    mu=mu,
+                    sigma=sigma,
+                    delta=delta,
+                    kld_weight=config["loss"]["kld_weight"],
+                )
+            else:
+                loss = f_loss(pred_outputs, inputs)
 
             num_samples += inputs.shape[0]
 
             loss_avg += inputs.shape[0] * loss.item()
+            recon_loss_avg += inputs.shape[0] * recon_loss.item()
+            kld_avg += inputs.shape[0] * kld.item()
 
-    return loss_avg / num_samples
+    return (loss_avg / num_samples, recon_loss_avg / num_samples, kld_avg / num_samples)
 
 
 class ModelCheckpoint(object):
@@ -227,21 +268,33 @@ class ModelCheckpoint(object):
 
 def generate_unique_logpath(logdir: str, raw_run_name: str) -> str:
     """
-    Generate a unique directory name and create it if necessary
+    Generate a unique directory name based on the highest existing suffix in directory names
+    and create it if necessary.
 
     Arguments:
         logdir: the prefix directory
         raw_run_name: the base name
 
     Returns:
-        log_path: a non-existent path like logdir/raw_run_name_xxxx
-                  where xxxx is an int
+        log_path: a non-existent path like logdir/raw_run_name_x
+                  where x is an int that is higher than any existing suffix.
     """
-    i = 0
-    while True:
-        run_name = raw_run_name + "_" + str(i)
-        log_path = os.path.join(logdir, run_name)
-        if not os.path.isdir(log_path):
-            os.makedirs(log_path)
-            return log_path
-        i = i + 1
+    highest_num = -1
+    for item in os.listdir(logdir):
+        if item.startswith(raw_run_name + "_") and os.path.isdir(
+            os.path.join(logdir, item)
+        ):
+            try:
+                suffix = int(item.split("_")[-1])
+                highest_num = max(highest_num, suffix)
+            except ValueError:
+                # If conversion to int fails, ignore the directory name
+                continue
+
+    # The new directory name should be one more than the highest found
+    new_num = highest_num + 1
+    run_name = f"{raw_run_name}_{new_num}"
+    log_path = os.path.join(logdir, run_name)
+    os.makedirs(log_path)
+
+    return log_path

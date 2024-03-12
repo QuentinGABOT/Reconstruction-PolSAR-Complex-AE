@@ -14,6 +14,7 @@ class VAE(nn.Module):
         channels_ratio,
         latent_dim,
         input_size,
+        activation,
     ):
         super(VAE, self).__init__()
         self.n_channels = num_channels
@@ -21,11 +22,13 @@ class VAE(nn.Module):
         # Encoder with doubling channels
         current_channels = channels_ratio
         self.encoder_layers = []
-        self.encoder_layers.append(DoubleConv(self.n_channels, current_channels))
+        self.encoder_layers.append(
+            DoubleConv(self.n_channels, current_channels, activation)
+        )
         for i in range(1, num_layers):
             out_channels = channels_ratio * 2**i
             input_size //= 2
-            self.encoder_layers.append(Down(current_channels, out_channels))
+            self.encoder_layers.append(Down(current_channels, out_channels, activation))
             current_channels = out_channels
         self.encoder = nn.Sequential(*self.encoder_layers)
 
@@ -40,16 +43,16 @@ class VAE(nn.Module):
 
         for i in range(num_layers - 2, -1, -1):
             out_channels = channels_ratio * 2**i
-            self.decoder_layers.append(Up(current_channels, out_channels))
+            self.decoder_layers.append(Up(current_channels, out_channels, activation))
             current_channels = out_channels
         self.decoder_layers.append(OutConv(current_channels, num_channels))
         self.decoder = nn.Sequential(*self.decoder_layers)
 
     def forward(self, x):
         x = self.encoder(x)
-        x, mu, logvar = self.dense(x)
+        x, mu, sigma, delta = self.dense(x)
         x = self.decoder(x)
-        return x, mu, logvar
+        return x, mu, sigma, delta
 
     def use_checkpointing(self):
         self.encoder = torch.utils.checkpoint(self.encoder)

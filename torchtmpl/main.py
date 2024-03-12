@@ -69,7 +69,13 @@ def train(config):
         ```
 
     """
-    seed_everything(2000)
+    """
+    data.delete_folders_with_few_pngs()
+    print("Done")
+    input()
+    """
+
+    # seed_everything(2000)
     cdtype = torch.complex64
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda") if use_cuda else torch.device("cpu")
@@ -121,7 +127,7 @@ def train(config):
 
     # Build the loss
     logging.info("= Loss")
-    loss = tl.optim.get_loss(config["loss"])
+    loss = tl.optim.get_loss(config["loss"]["name"])
 
     # Build the optimizer
     logging.info("= Optimizer")
@@ -174,20 +180,18 @@ def train(config):
     for e in range(config["nepochs"] + 1):
         last = False
         # Train 1 epoch
-        train_loss = utils.train_epoch(
+        train_loss, gradient_norm, train_recon_loss, train_kld = utils.train_epoch(
             model=model,
             loader=train_loader,
             f_loss=loss,
             optim=optimizer,
             device=device,
+            config=config,
         )
 
         # Test
-        test_loss = utils.test_epoch(
-            model=model,
-            loader=valid_loader,
-            f_loss=loss,
-            device=device,
+        test_loss, test_recon_loss, test_kld = utils.test_epoch(
+            model=model, loader=valid_loader, f_loss=loss, device=device, config=config
         )
 
         updated = model_checkpoint.update(test_loss)
@@ -203,10 +207,21 @@ def train(config):
         )
 
         # Update the dashboard
-        metrics = {"train_MSE": train_loss, "test_MSE": test_loss}
+        metrics = {
+            "train_MSE": train_loss,
+            "test_MSE": test_loss,
+            "train_recon_loss": train_recon_loss,
+            "test_recon_loss": test_recon_loss,
+            "train_kld": train_kld,
+            "test_kld": test_kld,
+            "gradient_norm": gradient_norm,
+            "epoch": e,
+        }
+        """
         if wandb_log is not None:
             logging.info("Logging on wandb")
             wandb_log(metrics)
+        """
 
         # Sample 5 images and their generated counterparts
         img_datasets = []
@@ -236,12 +251,14 @@ def train(config):
             last = True
         data.show_images(img_datasets, img_gens, image_path, last)
         imgs = Image.open(image_path)
-        # Log the image to wandb
+
+        # Log to wandb
         if wandb_log is not None:
-            logging.info("Logging image on wandb")
+            logging.info("Logging on wandb")
             wandb.log(
                 {"generated_images": [wandb.Image(imgs, caption="Epoch: {}".format(e))]}
             )
+            wandb.log(metrics)
 
     wandb.finish()
 

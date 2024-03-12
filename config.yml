@@ -19,14 +19,16 @@ logging:
   logdir: ./logs
   wandb:
     project: gen_cvnn
-loss: ComplexMeanSquareError
+loss:
+  kld_weight: 0
+  name: ComplexVAELoss
 model:
   activation: modReLU
   channels_ratio: 64
-  class: AutoEncoder
+  class: VAE
   latent_dim: 1024
   num_layers: 7
-nepochs: 1000
+nepochs: 2000
 optim:
   algo: Adam
   params:

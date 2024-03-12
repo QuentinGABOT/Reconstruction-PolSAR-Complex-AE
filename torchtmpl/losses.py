@@ -23,7 +23,7 @@ class ComplexHuberLoss(nn.Module):
         # Calculate Huber Loss
         l1 = torch.abs(y_true - y_pred)
         if l1 < delta:
-            huber = delta*(torch.abs(y_true - y_pred) ** 2)
+            huber = delta * (torch.abs(y_true - y_pred) ** 2)
         else:
             huber = torch.mean(delta * (torch.abs(y_true - y_pred) - 0.5 * delta))
         return huber
@@ -37,7 +37,7 @@ class ComplexVAELoss(nn.Module):
         """
         super(ComplexVAELoss, self).__init__()
 
-    def forward(self, x, recon_x, mu, logvar):
+    def forward(self, x, recon_x, mu, sigma, delta, kld_weight):
         """
         Computes the VAE loss.
 
@@ -45,7 +45,8 @@ class ComplexVAELoss(nn.Module):
         recon_x: Reconstructed data.
         x: Original input data.
         mu: Mean from the latent space.
-        logvar: Log variance from the latent space.
+        sigma: Covariance from the latent space.
+        delta: Pseudo covariance from the latent space.
 
         Returns:
         torch.Tensor: Computed VAE loss.
@@ -55,8 +56,18 @@ class ComplexVAELoss(nn.Module):
         recon_loss = MSELoss(y_true=x, y_pred=recon_x)
 
         # KL Divergence
-        kl_divergence = torch.abs(-0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp()))
-        return recon_loss + kl_divergence
+        kl_divergence = -x.shape[0] + torch.sum(
+            (
+                (
+                    sigma * (1 + torch.square(torch.abs(mu)))
+                    + (delta * torch.square(1j * mu)).real
+                )
+                / (torch.square(sigma) - torch.square(torch.abs(delta)))
+                + 0.5 * torch.log(torch.square(sigma) - torch.square(torch.abs(delta)))
+            )
+        )
+
+        return recon_loss + kld_weight * kl_divergence, recon_loss, kl_divergence
 
 
 # Example usage

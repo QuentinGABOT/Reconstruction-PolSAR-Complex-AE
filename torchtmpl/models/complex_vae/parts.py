@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import numpy as np
 import torch.nn.functional as F
 import torchcvnn.nn.modules as c_nn
 from math import prod
@@ -10,7 +11,9 @@ from math import prod
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(
+        self, in_channels, out_channels, activation, stride=1, mid_channels=None
+    ):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
@@ -19,22 +22,26 @@ class DoubleConv(nn.Module):
                 in_channels,
                 mid_channels,
                 kernel_size=3,
+                stride=stride,
                 padding=1,
                 bias=False,
+                padding_mode="replicate",
                 dtype=torch.complex64,
             ),
             c_nn.BatchNorm2d(mid_channels),
-            c_nn.zLeakyReLU(),
+            activation,
             nn.Conv2d(
                 mid_channels,
                 out_channels,
                 kernel_size=3,
+                stride=1,
                 padding=1,
                 bias=False,
+                padding_mode="replicate",
                 dtype=torch.complex64,
             ),
             c_nn.BatchNorm2d(out_channels),
-            c_nn.CCELU(),
+            activation,
         )
 
     def forward(self, x):
@@ -44,10 +51,15 @@ class DoubleConv(nn.Module):
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, activation):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
-            c_nn.MaxPool2d(2), DoubleConv(in_channels, out_channels)
+            DoubleConv(
+                in_channels,
+                out_channels,
+                activation,
+                stride=2,
+            ),
         )
 
     def forward(self, x):
@@ -57,12 +69,12 @@ class Down(nn.Module):
 class Up(nn.Module):
     """Upscaling then double conv"""
 
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, activation):
         super().__init__()
         self.up = c_nn.ConvTranspose2d(
             in_channels, out_channels, kernel_size=2, stride=2
         )
-        self.conv = DoubleConv(out_channels, out_channels)
+        self.conv = DoubleConv(out_channels, out_channels, activation)
 
     def forward(self, x):
         x = self.up(x)
@@ -74,24 +86,10 @@ class OutConv(nn.Module):
         super(OutConv, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=1, dtype=torch.complex64),
-            c_nn.modReLU(),
         )
 
     def forward(self, x):
         return self.conv(x)
-
-
-"""
-class Reparametrize(nn.Module):
-    
-    #Reparameterization trick for VAE, sampling from N(mu, logvar)
-    
-
-    def forward(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mu + eps * std
-"""
 
 
 class Dense(nn.Module):
@@ -103,7 +101,15 @@ class Dense(nn.Module):
         self.fc_mu = nn.Linear(
             in_features=linear, out_features=latent_dim, dtype=torch.complex64
         )
-        self.fc_logvar = nn.Linear(
+        self.fc_covar = nn.Sequential(
+            nn.Linear(
+                in_features=linear,
+                out_features=latent_dim,
+                dtype=torch.complex64,
+            ),
+            c_nn.activation.Mod(),
+        )
+        self.fc_pseudo_covar = nn.Linear(
             in_features=linear, out_features=latent_dim, dtype=torch.complex64
         )
         self.unflatten = nn.Sequential(
@@ -111,15 +117,33 @@ class Dense(nn.Module):
             nn.Unflatten(dim=1, unflattened_size=(in_channels, input_size, input_size)),
         )
 
-    def reparametrize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mu + eps * std
+    def reparametrize(self, mu, sigma, delta):
+
+        z = torch.randn_like(sigma, dtype=torch.complex64)  # z ~ CN(0,I,O)
+        xy = torch.stack((z.real, z.imag), dim=2)
+        Cx = torch.stack((sigma + delta.real, delta.imag), dim=2)
+        Cy = torch.stack((delta.imag, sigma - delta.real), dim=2)
+        Cxy = torch.stack((Cx, Cy), dim=2)
+
+        L = torch.linalg.cholesky(Cxy)
+        xy = xy.unsqueeze(-1)
+        z_tilde = torch.matmul(L, xy)
+        z_tilde = z_tilde.squeeze(-1)
+
+        x_tilde = z_tilde[:, :, 0] + mu.real
+        y_tilde = z_tilde[:, :, 1] + mu.imag
+        return x_tilde + 1j * y_tilde
 
     def forward(self, x):
         x = self.flatten(x)
         mu = self.fc_mu(x)
-        logvar = self.fc_logvar(x)
-        z = self.reparametrize(mu, logvar)
+        sigma = self.fc_covar(x)
+        delta = self.fc_pseudo_covar(x)
+        delta = torch.where(
+            torch.abs(delta) > 0.99 * sigma,
+            0.99 * sigma * torch.exp(1j * torch.angle(delta)),
+            delta,
+        )
+        z = self.reparametrize(mu, sigma, delta)
         x = self.unflatten(z)
-        return x, mu, logvar
+        return x, mu, sigma, delta
