@@ -9,13 +9,14 @@ import tempfile
 def makejob(commit_id, configpath, nruns):
     return f"""#!/bin/bash
 
-#SBATCH --job-name=templatecode
+#SBATCH --job-name=monjob
 #SBATCH --nodes=1
-#SBATCH --partition=gpu_prod_long
-#SBATCH --time=2:00:00
-#SBATCH --output=logslurms/slurm-%A_%a.out
-#SBATCH --error=logslurms/slurm-%A_%a.err
-#SBATCH --array=1-{nruns}
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=200G
+#SBATCH --tmp=30G
+#SBATCH --partition=gpu_test
+#SBATCH --time=00:10:00
 
 current_dir=`pwd`
 export PATH=$PATH:~/.local/bin

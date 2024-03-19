@@ -30,13 +30,13 @@ class AutoEncoder(nn.Module):
             self.encoder_layers.append(Down(current_channels, out_channels, activation))
             current_channels = out_channels
         self.encoder = nn.Sequential(*self.encoder_layers)
-        """
+
         self.dense = Dense(
             in_channels=current_channels,
             latent_dim=latent_dim,
             input_size=input_size,
         )
-        """
+
         # Decoder with halving channels
         self.decoder_layers = []
         for i in range(num_layers - 2, -1, -1):
@@ -48,7 +48,7 @@ class AutoEncoder(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
-        # x = self.dense(x)
+        x = self.dense(x)
         x = self.decoder(x)
         return x
 

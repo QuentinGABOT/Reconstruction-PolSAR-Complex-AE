@@ -1,7 +1,8 @@
 # External imports
 import torch
 import torch.nn as nn
-from torchtmpl.losses import ComplexMeanSquareError, ComplexVAELoss
+from torchcvnn.nn.modules.loss import ComplexMSELoss
+from torchtmpl.losses import ComplexVAELoss, ComplexVAEPhaseLoss
 
 
 def get_loss(lossname):

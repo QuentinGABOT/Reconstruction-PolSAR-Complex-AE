@@ -36,7 +36,7 @@ from skimage import exposure
 import matplotlib.pyplot as plt
 
 from torchtmpl.data import get_dataloaders
-from .losses import ComplexVAELoss
+from .losses import ComplexVAELoss, ComplexVAEPhaseLoss
 from torchtmpl.models import VAE, UNet, AutoEncoder
 
 # import torch.onnx
@@ -69,18 +69,25 @@ def train_epoch(
     loss_avg = 0
     recon_loss_avg = 0
     kld_avg = 0
+    mu_avg = 0
+    sigma_avg = 0
+    delta_avg = 0
 
     num_samples = 0
     gradient_norm = 0
-    for inputs in tqdm.tqdm(loader):
+    for inputs, labels in tqdm.tqdm(loader):
+
         inputs = Variable(inputs).to(device)
         # Forward propagate through the model
         if isinstance(model, VAE):
             pred_outputs, mu, sigma, delta = model(inputs)
         else:
             pred_outputs = model(inputs)
-        if isinstance(f_loss, ComplexVAELoss):
-            loss, recon_loss, kld = f_loss(
+
+        if isinstance(f_loss, ComplexVAELoss) or isinstance(
+            f_loss, ComplexVAEPhaseLoss
+        ):
+            loss, recon_loss, kld, mu, sigma, delta = f_loss(
                 x=inputs,
                 recon_x=pred_outputs,
                 mu=mu,
@@ -88,6 +95,12 @@ def train_epoch(
                 delta=delta,
                 kld_weight=config["loss"]["kld_weight"],
             )
+            recon_loss_avg += inputs.shape[0] * recon_loss.item()
+            kld_avg += inputs.shape[0] * kld.item()
+
+            mu_avg += inputs.shape[0] * mu.item()
+            sigma_avg += inputs.shape[0] * sigma.item()
+            delta_avg += inputs.shape[0] * delta.item()
         else:
             loss = f_loss(pred_outputs, inputs)
 
@@ -108,17 +121,16 @@ def train_epoch(
 
         num_samples += inputs.shape[0]
 
-        # Denormalize the loss that is supposed to be averaged over the
-        # minibatch
         loss_avg += inputs.shape[0] * loss.item()
-        recon_loss_avg += inputs.shape[0] * recon_loss.item()
-        kld_avg += inputs.shape[0] * kld.item()
 
     return (
         loss_avg / num_samples,
         gradient_norm / num_samples,
         recon_loss_avg / num_samples,
         kld_avg / num_samples,
+        np.abs(mu_avg / num_samples),
+        np.abs(sigma_avg / num_samples),
+        np.abs(delta_avg / num_samples),
     )
 
 
@@ -148,9 +160,13 @@ def test_epoch(
     loss_avg = 0
     recon_loss_avg = 0
     kld_avg = 0
+    mu_avg = 0
+    sigma_avg = 0
+    delta_avg = 0
+
     num_samples = 0
     with torch.no_grad():
-        for inputs in loader:
+        for inputs, labels in loader:
             inputs = Variable(inputs).to(device)
             # Forward propagate through the model
 
@@ -158,8 +174,10 @@ def test_epoch(
                 pred_outputs, mu, sigma, delta = model(inputs)
             else:
                 pred_outputs = model(inputs)
-            if isinstance(f_loss, ComplexVAELoss):
-                loss, recon_loss, kld = f_loss(
+            if isinstance(f_loss, ComplexVAELoss) or isinstance(
+                f_loss, ComplexVAEPhaseLoss
+            ):
+                loss, recon_loss, kld, mu, sigma, delta = f_loss(
                     x=inputs,
                     recon_x=pred_outputs,
                     mu=mu,
@@ -167,16 +185,28 @@ def test_epoch(
                     delta=delta,
                     kld_weight=config["loss"]["kld_weight"],
                 )
+                recon_loss_avg += inputs.shape[0] * recon_loss.item()
+                kld_avg += inputs.shape[0] * kld.item()
+
+                mu_avg += inputs.shape[0] * mu.item()
+                sigma_avg += inputs.shape[0] * sigma.item()
+                delta_avg += inputs.shape[0] * delta.item()
+
             else:
                 loss = f_loss(pred_outputs, inputs)
 
             num_samples += inputs.shape[0]
 
             loss_avg += inputs.shape[0] * loss.item()
-            recon_loss_avg += inputs.shape[0] * recon_loss.item()
-            kld_avg += inputs.shape[0] * kld.item()
 
-    return (loss_avg / num_samples, recon_loss_avg / num_samples, kld_avg / num_samples)
+    return (
+        loss_avg / num_samples,
+        recon_loss_avg / num_samples,
+        kld_avg / num_samples,
+        np.abs(mu_avg / num_samples),
+        np.abs(sigma_avg / num_samples),
+        np.abs(delta_avg / num_samples),
+    )
 
 
 class ModelCheckpoint(object):

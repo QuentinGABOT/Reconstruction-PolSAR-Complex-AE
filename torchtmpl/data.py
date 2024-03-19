@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.utils.data
 from torchvision import transforms
 
-from torchcvnn.datasets.polsf import PolSFAlos2Dataset
+from torchcvnn.datasets.polsf import PolSFDataset
 
 
 class LogAmplitudeTransform:
@@ -22,7 +22,19 @@ class LogAmplitudeTransform:
         # Store the channel characteristics
         self.characteristics = characteristics
 
-    def __call__(self, tensor):
+    def __call__(self, element):
+
+        tensor = torch.as_tensor(
+            np.stack(
+                (
+                    element["HH"],
+                    (element["HV"] + element["VH"]) / 2,
+                    element["VV"],
+                ),
+                axis=-1,
+            ).transpose(2, 0, 1),
+            dtype=torch.complex64,
+        )  # à faire valider
         new_tensor = tensor
         m = 2e-2
         M = 40
@@ -39,29 +51,362 @@ class LogAmplitudeTransform:
         return new_tensor
 
 
-"""
-class ExpAmplitudeTransform:
-    def __init__(self, characteristics):
-        # Store the channel characteristics
-        self.characteristics = characteristics
+def pauli_transform(SAR_img):
+    S_HH = SAR_img[0, :, :]
+    S_HV = SAR_img[1, :, :]
+    S_VV = SAR_img[2, :, :]
+    return (1 / np.sqrt(2)) * np.stack(
+        (
+            S_HH - S_VV,
+            2 * S_HV,
+            S_HH + S_VV,
+        ),
+        dtype=np.complex64,
+    )
 
-    def __call__(self, tensor):
-        new_tensor = tensor
-        m = 2e-2
-        M = 40
 
-        amplitude = torch.abs(tensor)
-        phase = torch.angle(tensor)
+def cameron_transform(SAR_img):
+    S_HH = SAR_img[0, :, :]
+    S_HV = SAR_img[1, :, :]
+    S_VH = S_HV
+    S_VV = SAR_img[2, :, :]
 
-        inv_transformed_amplitude = torch.exp(
-            (np.log10(M) - np.log10(m)) * amplitude + np.log10(m)
+    # Calculate the norm of the backscatter vectors
+    a = np.sqrt(
+        S_HH * np.conj(S_HH)
+        + S_HV * np.conj(S_HV)
+        + S_VH * np.conj(S_VH)
+        + S_VV * np.conj(S_VV)
+    )
+
+    # Determine the Pauli parameters
+    Alpha = 1 / np.sqrt(2) * (S_HH + S_VV)
+    Beta = 1 / np.sqrt(2) * (S_HH - S_VV)
+    Gamma = 1 / np.sqrt(2) * (S_HV + S_VH)
+    Delta = 1 / np.sqrt(2) * (S_VH - S_HV)
+
+    # Determine the parameter x
+    sin_x = (Beta * np.conj(Gamma) + np.conj(Beta) * Gamma) / np.sqrt(
+        (Beta * np.conj(Gamma) + np.conj(Beta) * Gamma) ** 2
+        + (np.abs(Beta) ** 2 - np.abs(Gamma) ** 2) ** 2
+    )
+    cos_x = (np.abs(Beta) ** 2 - np.abs(Gamma) ** 2) / np.sqrt(
+        (Beta * np.conj(Gamma) + np.conj(Beta) * Gamma) ** 2
+        + (np.abs(Beta) ** 2 - np.abs(Gamma) ** 2) ** 2
+    )
+
+    x = (
+        np.arccos(cos_x) * (sin_x >= 0)
+        + np.arcsin(sin_x) * ((sin_x < 0) & (cos_x >= 0))
+        + (-np.arcsin(sin_x) - np.pi) * ((sin_x < 0) & (cos_x < 0))
+    ) * (
+        (np.abs(Beta) ** 2 - np.abs(Gamma) ** 2 != 0)
+        | (Beta * np.conj(Gamma) + np.conj(Beta) * Gamma != 0)
+    )
+
+    # Determine DS
+    Scalar = (
+        1
+        / np.sqrt(2)
+        * (
+            S_HH * np.cos(x / 2)
+            + S_HV * np.sin(x / 2)
+            + S_VH * np.sin(x / 2)
+            - S_VV * np.cos(x / 2)
         )
-        # Recombine to form new complex tensor
-        new_tensor = inv_transformed_amplitude * torch.exp(1j * phase)
+    )
+    DS_1 = 1 / np.sqrt(2) * (Alpha + np.cos(x / 2) * Scalar)
+    DS_2 = 1 / np.sqrt(2) * np.sin(x / 2) * Scalar
+    DS_3 = 1 / np.sqrt(2) * np.sin(x / 2) * Scalar
+    DS_4 = 1 / np.sqrt(2) * (Alpha - (np.cos(x / 2) * Scalar))
 
-        return new_tensor
-"""
-# transfo Pauli, Cameron, Krogager
+    # Determine S_max
+    S_max = np.sqrt(
+        DS_1 * np.conj(DS_1)
+        + DS_2 * np.conj(DS_2)
+        + DS_3 * np.conj(DS_3)
+        + DS_4 * np.conj(DS_4)
+    )
+    S_max1 = DS_1 / S_max
+    S_max2 = DS_2 / S_max
+    S_max3 = DS_3 / S_max
+    S_max4 = DS_4 / S_max
+
+    # Determine S_rec
+    S_rec1 = S_HH
+    S_rec2 = 1 / 2 * (S_HV + S_VH)
+    S_rec3 = 1 / 2 * (S_HV + S_VH)
+    S_rec4 = S_VV
+
+    # Calculate DS_rec
+    Scalar_rec = (
+        1
+        / np.sqrt(2)
+        * (
+            S_rec1 * np.cos(x / 2)
+            + S_rec2 * np.sin(x / 2)
+            + S_rec3 * np.sin(x / 2)
+            - S_rec4 * np.cos(x / 2)
+        )
+    )
+    DS_rec1 = 1 / np.sqrt(2) * (Alpha + np.cos(x / 2) * Scalar_rec)
+    DS_rec2 = 1 / np.sqrt(2) * np.sin(x / 2) * Scalar_rec
+    DS_rec3 = 1 / np.sqrt(2) * np.sin(x / 2) * Scalar_rec
+    DS_rec4 = 1 / np.sqrt(2) * (Alpha - (np.cos(x / 2) * Scalar_rec))
+
+    # Determine S_min
+    S_min1 = S_rec1 - DS_rec1
+    S_min2 = S_rec2 - DS_rec2
+    S_min3 = S_rec3 - DS_rec3
+    S_min4 = S_rec4 - DS_rec4
+
+    S_max = np.sqrt(
+        S_min1 * np.conj(S_min1)
+        + S_min2 * np.conj(S_min2)
+        + S_min3 * np.conj(S_min3)
+        + S_min4 * np.conj(S_min4)
+    )
+
+    S_min1 /= S_max
+    S_min2 /= S_max
+    S_min3 /= S_max
+    S_min4 /= S_max
+
+    # Determine S_nr
+    S_nr = Delta / np.abs(Delta)  # impossible à déterminer
+
+    # Determine Theta_rec
+    Theta_rec = np.arccos(
+        np.sqrt(
+            S_rec1 * np.conj(S_rec1)
+            + S_rec2 * np.conj(S_rec2)
+            + S_rec3 * np.conj(S_rec3)
+            + S_rec4 * np.conj(S_rec4)
+        )
+        / a
+    )
+
+    # Determine Tau
+    Scalar_tau = (
+        S_rec1 * np.conj(DS_1)
+        + S_rec2 * np.conj(DS_2)
+        + S_rec3 * np.conj(DS_3)
+        + S_rec4 * np.conj(DS_4)
+    )
+    S_max_tau = np.sqrt(
+        S_rec1 * np.conj(S_rec1)
+        + S_rec2 * np.conj(S_rec2)
+        + S_rec3 * np.conj(S_rec3)
+        + S_rec4 * np.conj(S_rec4)
+    )
+    S_maxx_tau = np.sqrt(
+        DS_1 * np.conj(DS_1)
+        + DS_2 * np.conj(DS_2)
+        + DS_3 * np.conj(DS_3)
+        + DS_4 * np.conj(DS_4)
+    )
+
+    Tau = np.arccos(np.abs(Scalar_tau / (S_max_tau * S_maxx_tau)))
+
+    # Determination of Psi_0
+    Psi_1 = -1 / 4 * x
+
+    Psi_11 = Psi_1
+    Psi_12 = Psi_1 + np.pi / 2
+    Psi_13 = Psi_1 - np.pi / 2
+
+    def compute_A_components(Psi):
+        A_1 = (
+            (np.cos(Psi) ** 2) * DS_rec1
+            - (np.cos(Psi) * np.sin(Psi)) * DS_rec2
+            - (np.cos(Psi) * np.sin(Psi)) * DS_rec3
+            + (np.sin(Psi) ** 2) * DS_rec4
+        )
+        A_4 = (
+            (np.sin(Psi) ** 2) * DS_rec1
+            + (np.cos(Psi) * np.sin(Psi)) * DS_rec2
+            + (np.cos(Psi) * np.sin(Psi)) * DS_rec3
+            + (np.cos(Psi) ** 2) * DS_rec4
+        )
+        return np.abs(A_1), np.abs(A_4)
+
+    A1_1, A1_4 = compute_A_components(Psi_11)
+    A2_1, A2_4 = compute_A_components(Psi_12)
+    A3_1, A3_4 = compute_A_components(Psi_13)
+
+    Psi_0 = Psi_11 * ((Psi_11 > -np.pi / 2) & (Psi_11 <= np.pi / 2) & (A1_1 >= A1_4))
+    Psi_0 = Psi_0 + Psi_12 * (
+        (Psi_12 > -np.pi / 2) & (Psi_12 <= np.pi / 2) & (A2_1 >= A2_4) & (Psi_0 == 0)
+    )
+    Psi_0 = Psi_0 + Psi_13 * (
+        (Psi_13 > -np.pi / 2) & (Psi_13 <= np.pi / 2) & (A3_1 >= A3_4) & (Psi_0 == 0)
+    )
+
+    # Determination of Psi_D
+    A1_1, A1_4 = compute_A_components(Psi_0)
+
+    I_a = A1_1 == A1_4
+    I_b = A1_1 == -A1_4
+
+    Psi_D = (Psi_0 - np.pi / 2) * ((Psi_0 > np.pi / 4) & (I_a | I_b))
+    Psi_D = Psi_D + Psi_0 * (
+        ((Psi_0 > -np.pi / 4) & (Psi_0 <= np.pi / 4) & (Psi_D == 0)) & (I_a | I_b)
+    )
+    Psi_D = Psi_D + (Psi_0 + np.pi / 2) * (
+        ((Psi_0 <= -np.pi / 4) & (Psi_D == 0)) & (I_a | I_b)
+    )
+    Psi_D = Psi_D + Psi_0 * ((I_a == 0) & (I_b == 0))
+
+    return (
+        S_max1,
+        S_max2,
+        S_max3,
+        S_max4,
+        S_min1,
+        S_min2,
+        S_min3,
+        S_min4,
+        S_nr,
+        a,
+        Tau,
+        Theta_rec,
+        Psi_D,
+    )
+
+
+def cameron_classification(
+    S_max1,
+    S_max2,
+    S_max3,
+    S_max4,
+    S_min1,
+    S_min2,
+    S_min3,
+    S_min4,
+    S_nr,
+    a,
+    Tau,
+    Theta_rec,
+    Psi_D,
+):
+
+    A1 = (
+        (np.cos(Psi_D) ** 2) * S_max1
+        - (np.cos(Psi_D) * np.sin(Psi_D)) * (S_max2 + S_max3)
+        + (np.sin(Psi_D) ** 2) * S_max4
+    )
+    A4 = (
+        (np.sin(Psi_D) ** 2) * S_max1
+        + (np.cos(Psi_D) * np.sin(Psi_D)) * (S_max2 + S_max3)
+        + (np.cos(Psi_D) ** 2) * S_max4
+    )
+    z = A4 / A1
+
+    classe = np.zeros(Theta_rec.shape)
+
+    for i in range(Theta_rec.shape[0]):
+        for j in range(Theta_rec.shape[1]):
+            if Theta_rec[i, j] > np.pi / 4:
+                classe[i, j] = 1
+            elif Theta_rec[i, j] <= np.pi / 4 and Tau[i, j] > np.pi / 8:
+                S1 = (
+                    a[i, j]
+                    * np.cos(Theta_rec[i, j])
+                    * (
+                        np.cos(Tau[i, j]) * S_max1[i, j]
+                        + np.sin(Tau[i, j]) * S_min1[i, j]
+                    )
+                )
+                S2 = a[i, j] * np.cos(Theta_rec[i, j]) * (
+                    np.cos(Tau[i, j]) * S_max2[i, j] + np.sin(Tau[i, j]) * S_min2[i, j]
+                ) - a[i, j] * np.sin(Theta_rec[i, j]) * S_nr[i, j] / np.sqrt(2)
+                S3 = a[i, j] * np.cos(Theta_rec[i, j]) * (
+                    np.cos(Tau[i, j]) * S_max3[i, j] + np.sin(Tau[i, j]) * S_min3[i, j]
+                ) + a[i, j] * np.sin(Theta_rec[i, j]) * S_nr[i, j] / np.sqrt(2)
+                S4 = (
+                    a[i, j]
+                    * np.cos(Theta_rec[i, j])
+                    * (
+                        np.cos(Tau[i, j]) * S_max4[i, j]
+                        + np.sin(Tau[i, j]) * S_min4[i, j]
+                    )
+                )
+
+                Scalarleft = 0.5 * (S1 - S4 - 1j * (S2 + S3))
+                Scalarright = 0.5 * (S1 - S4 + 1j * (S2 + S3))
+
+                theta_Tleft = np.arccos(abs(Scalarleft / a[i, j]))
+                theta_Tright = np.arccos(abs(Scalarright / a[i, j]))
+
+                if theta_Tleft > np.pi / 4 and theta_Tright > np.pi / 4:
+                    classe[i, j] = 2
+                else:
+                    classifieur = int(theta_Tleft >= theta_Tright)
+                    classe[i, j] = classifieur * 3 + (1 - classifieur) * 4
+
+            elif Theta_rec[i, j] <= np.pi / 4 and Tau[i, j] <= np.pi / 8:
+                z_conj = np.conj(z[i, j])
+                D_Trihedre = np.arccos(
+                    max(abs(1 + z_conj), abs(1 + z_conj))
+                    / np.sqrt(2 * (1 + abs(z[i, j]) ** 2))
+                )
+                D_Dihedre = np.arccos(
+                    max(abs(1 - z_conj), abs(-1 + z_conj))
+                    / np.sqrt(2 * (1 + abs(z[i, j]) ** 2))
+                )
+                D_Dipole = np.arccos(
+                    max(1, abs(z_conj)) / np.sqrt((1 + abs(z[i, j]) ** 2))
+                )
+                D_Cylindre = np.arccos(
+                    max(abs(1 + z_conj / 2), abs(1 / 2 + z_conj))
+                    / np.sqrt(5 / 4 * (1 + abs(z[i, j]) ** 2))
+                )
+                D_Dihedreetroit = np.arccos(
+                    max(abs(1 - z_conj / 2), abs(-1 / 2 + z_conj))
+                    / np.sqrt(5 / 4 * (1 + abs(z[i, j]) ** 2))
+                )
+                D_QuartOnde = np.arccos(
+                    max(abs(1 + 1j * z_conj), abs(1j + z_conj))
+                    / np.sqrt(2 * (1 + abs(z[i, j]) ** 2))
+                )
+
+                D = np.array(
+                    [
+                        D_Trihedre,
+                        D_Dihedre,
+                        D_Dipole,
+                        D_Cylindre,
+                        D_Dihedreetroit,
+                        D_QuartOnde,
+                    ]
+                )
+
+                classifieur = np.min(D)
+
+                if classifieur > np.pi / 4:
+                    classe[i, j] = 5
+                else:
+                    classe[i, j] = np.argmin(D) + 6
+
+    return classe
+
+
+def krogager_transform(SAR_img):
+    S_HH = SAR_img[0, :, :]
+    S_HV = SAR_img[1, :, :]
+    S_VV = SAR_img[2, :, :]
+
+    S_RR = 1j * S_HV + 0.5 * (S_HH - S_VV)
+    S_LL = 1j * S_HV - 0.5 * (S_HH - S_VV)
+    S_RL = 1j / 2 * (S_HH + S_VV)
+
+    return np.stack(
+        (
+            np.minimum(np.abs(S_RR), np.abs(S_LL)),
+            np.abs(np.abs(S_RR) - np.abs(S_LL)),
+            np.abs(S_RL),
+        ),
+    )
 
 
 def exp_amplitude_transform(tensor):
@@ -263,44 +608,85 @@ def h_alpha(pauli_radar_image):
 
 def show_images(samples, generated, image_path, last):
     num_samples = len(samples)
-    num_channels = samples[0].shape[
-        0
-    ]  # Assuming 3 channels for PolSAR images: HH, HV(=VH), VV
+    num_channels = samples[0].shape[0]
 
     if last:
-        ncols = (
-            9 + 4 * num_channels
-        )  # Adjusted to include an extra column for the MSE histogram
+        ncols = 11 + 4 * num_channels
     else:
-        ncols = 9  # Amplitude images, and one column for the MSE histogram
+        ncols = 11
 
     fig, axes = plt.subplots(
         nrows=num_samples, ncols=ncols, figsize=(5 * ncols, 5 * num_samples)
     )
     axes = np.atleast_2d(axes)  # Ensure axes is a 2D array for consistency
-    channels = ["HH-VV", "2HV", "HH+VV"]
+    channels = ["HH", "HV", "VV"]
+    channels_pauli = ["HH-VV", "2HV", "HH+VV"]
+    channels_krogager = ["kd", "kh", "ks"]
 
     for i in range(num_samples):
+
         idx = 0
         img_dataset, img_gen = (
             exp_amplitude_transform(samples[i]).numpy(),
             exp_amplitude_transform(generated[i]).numpy(),
         )
+
         img_dataset_trans = img_dataset.transpose(1, 2, 0)
         img_gen_trans = img_gen.transpose(1, 2, 0)
 
-        # Plot amplitude images
-        eq_dataset, (p2, p98) = equalize(img_dataset_trans)
+        pauli_img_dataset = pauli_transform(img_dataset).transpose(1, 2, 0)
+        pauli_img_gen = pauli_transform(img_gen).transpose(1, 2, 0)
+
+        krogager_img_dataset = krogager_transform(img_dataset).transpose(1, 2, 0)
+        krogager_img_gen = krogager_transform(img_gen).transpose(1, 2, 0)
+
+        """
+        print(cameron_transform(img_dataset))
+        input()
+        cameron_img_dataset = cameron_classification(cameron_transform(img_dataset))
+        print(cameron_img_dataset.shape)
+        input()
+        cameron_img_gen = cameron_classification(cameron_transform(img_gen))
+        """
+        # Plot amplitude using Pauli decomposition
+        eq_dataset, (p2, p98) = equalize(pauli_img_dataset)
         axes[i][idx].imshow(eq_dataset, origin="lower")
-        axes[i][idx].set_title(f"Amplitude dataset {i+1}")
+        axes[i][idx].set_title(f"Amplitude dataset Pauli basis {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
         idx += 1
 
-        eq_generated, _ = equalize(img_gen_trans, p2=p2, p98=p98)
+        eq_generated, _ = equalize(pauli_img_gen, p2=p2, p98=p98)
         axes[i][idx].imshow(eq_generated, origin="lower")
-        axes[i][idx].set_title(f"Amplitude generated {i+1}")
+        axes[i][idx].set_title(f"Amplitude generated Pauli basis {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
         idx += 1
+
+        # Plot amplitude using Krogager decomposition
+        eq_dataset, (p2, p98) = equalize(krogager_img_dataset)
+        axes[i][idx].imshow(eq_dataset, origin="lower")
+        axes[i][idx].set_title(f"Amplitude dataset Krogager basis {i+1}")
+        axes[i][idx].axis("off")  # Turn off axes for image plot
+        idx += 1
+
+        eq_generated, _ = equalize(krogager_img_gen, p2=p2, p98=p98)
+        axes[i][idx].imshow(eq_generated, origin="lower")
+        axes[i][idx].set_title(f"Amplitude generated Krogager basis {i+1}")
+        axes[i][idx].axis("off")  # Turn off axes for image plot
+        idx += 1
+        """
+        # Plot amplitude using Cameron decomposition
+        eq_dataset, (p2, p98) = equalize(cameron_img_dataset)
+        axes[i][idx].imshow(eq_dataset, origin="lower")
+        axes[i][idx].set_title(f"Amplitude dataset Cameron basis {i+1}")
+        axes[i][idx].axis("off")  # Turn off axes for image plot
+        idx += 1
+
+        eq_generated, _ = equalize(cameron_img_gen, p2=p2, p98=p98)
+        axes[i][idx].imshow(eq_generated, origin="lower")
+        axes[i][idx].set_title(f"Amplitude generated Cameron basis {i+1}")
+        axes[i][idx].axis("off")  # Turn off axes for image plot
+        idx += 1
+        """
 
         # Compute pixel-wise amplitude difference and plot histogram in the same figure
         mse_values = np.abs(img_dataset_trans) - np.abs(
@@ -338,14 +724,14 @@ def show_images(samples, generated, image_path, last):
 
         ### Plot the H - alpha initialization, i.e. the mask of classes assigend to the pixels according to the H - alpha decomposition.
         axes[i][idx].imshow(
-            h_alpha(img_dataset_trans), origin="lower", cmap="tab10", vmin=1, vmax=9
+            h_alpha(pauli_img_dataset), origin="lower", cmap="tab10", vmin=1, vmax=9
         )
         axes[i][idx].set_title(f"H_alpha dataset {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
         idx += 1
 
         axes[i][idx].imshow(
-            h_alpha(img_gen_trans), origin="lower", cmap="tab10", vmin=1, vmax=9
+            h_alpha(pauli_img_gen), origin="lower", cmap="tab10", vmin=1, vmax=9
         )
         axes[i][idx].set_title(f"H_alpha generated {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
@@ -406,30 +792,35 @@ def show_images(samples, generated, image_path, last):
 
 
 def get_dataloaders(data_config, use_cuda):
+    img_size = (data_config["img_size"], data_config["img_size"])
+    img_stride = (data_config["img_stride"], data_config["img_stride"])
     valid_ratio = data_config["valid_ratio"]
     batch_size = data_config["batch_size"]
     num_workers = data_config["num_workers"]
 
     logging.info("  - Dataset creation")
 
-    # Assuming PolSFAlos2Dataset and data_config are defined elsewhere
     input_transform = LogAmplitudeTransform(data_config["characteristics"])
-    base_dataset = PolSFAlos2Dataset(
-        root=data_config["trainpath"], download=False, transform=input_transform
+    base_dataset = PolSFDataset(
+        root=data_config["trainpath"],
+        transform=input_transform,
+        patch_size=img_size,
+        patch_stride=img_stride,
     )
 
     logging.info(f"  - I loaded {len(base_dataset)} samples")
 
     # indices = list(range(len(base_dataset)))
-    valid_indices = [79, 82, 84, 86, 88]
-    indices = list(range(100))
-    train_indices = [num for num in indices if num not in valid_indices]
-    valid_indices = valid_indices
+    # valid_indices = [79, 82, 84, 86, 88]
+    indices = list(range(1000))
+    # train_indices = [num for num in indices if num not in valid_indices]
+    # train_indices = [num for num in indices]
+    # valid_indices = valid_indices
     # random.shuffle(indices)
     # num_valid = int(valid_ratio * len(base_dataset))
-    # num_valid = int(valid_ratio * len(indices))
-    # train_indices = indices[num_valid:]
-    # valid_indices = indices[:num_valid]
+    num_valid = int(valid_ratio * len(indices))
+    train_indices = indices[num_valid:]
+    valid_indices = indices[:num_valid]
     # train_indices = [78, 98] * 500
     # valid_indices = [78, 98] * 500
     # train_indices = [78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 98] * 10
@@ -455,11 +846,7 @@ def get_dataloaders(data_config, use_cuda):
         pin_memory=use_cuda,
     )
 
-    input_size = tuple(
-        base_dataset[0].shape
-    )  # size cause the dataset is made of tensor and not PIL nor nparray
-
-    return train_loader, valid_loader, input_size
+    return train_loader, valid_loader
 
 
 def delete_folders_with_few_pngs(min_png_count=10, root_path=None):

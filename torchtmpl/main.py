@@ -27,10 +27,14 @@ from torchtmpl.models import VAE, UNet, AutoEncoder
 
 
 def init_weights(m):
-    if isinstance(m, nn.Linear):
+    if (
+        isinstance(m, nn.Linear)
+        or isinstance(m, nn.Conv2d)
+        or isinstance(m, nn.ConvTranspose2d)
+    ):
         c_nn.init.complex_kaiming_normal_(m.weight, nonlinearity="relu")
-        # nn.init.kaiming_normal_(m.weight)
-        m.bias.data.fill_(0.01)
+        if m.bias is not None:
+            m.bias.data.fill_(0.01)
 
 
 def seed_everything(seed):
@@ -93,9 +97,7 @@ def train(config):
     logging.info("= Building the dataloaders")
     data_config = config["data"]
 
-    train_loader, valid_loader, input_size = tl.data.get_dataloaders(
-        data_config, use_cuda
-    )
+    train_loader, valid_loader = tl.data.get_dataloaders(data_config, use_cuda)
 
     # Build the model
     logging.info("= Model")
@@ -149,7 +151,7 @@ def train(config):
         yaml.dump(config, file)
 
     # Make a summary script of the experiment
-    input_size = next(iter(train_loader)).shape
+    input_size = next(iter(train_loader))[0].shape
     summary_text = (
         f"Logdir : {logdir}\n"
         + "## Command \n"
@@ -180,7 +182,15 @@ def train(config):
     for e in range(config["nepochs"] + 1):
         last = False
         # Train 1 epoch
-        train_loss, gradient_norm, train_recon_loss, train_kld = utils.train_epoch(
+        (
+            train_loss,
+            gradient_norm,
+            train_recon_loss,
+            train_kld,
+            mu_train,
+            sigma_train,
+            delta_train,
+        ) = utils.train_epoch(
             model=model,
             loader=train_loader,
             f_loss=loss,
@@ -190,8 +200,14 @@ def train(config):
         )
 
         # Test
-        test_loss, test_recon_loss, test_kld = utils.test_epoch(
-            model=model, loader=valid_loader, f_loss=loss, device=device, config=config
+        test_loss, test_recon_loss, test_kld, mu_test, sigma_test, delta_test = (
+            utils.test_epoch(
+                model=model,
+                loader=valid_loader,
+                f_loss=loss,
+                device=device,
+                config=config,
+            )
         )
 
         updated = model_checkpoint.update(test_loss)
@@ -208,26 +224,27 @@ def train(config):
 
         # Update the dashboard
         metrics = {
-            "train_MSE": train_loss,
-            "test_MSE": test_loss,
-            "train_recon_loss": train_recon_loss,
-            "test_recon_loss": test_recon_loss,
-            "train_kld": train_kld,
-            "test_kld": test_kld,
+            "train_loss": train_loss,
+            "test_loss": test_loss,
+            "train_MSE_loss": train_recon_loss,
+            "test_MSE_loss": test_recon_loss,
+            "train_KLD": train_kld,
+            "test_KLD": test_kld,
+            "mu_train": mu_train,
+            "sigma_train": sigma_train,
+            "delta_train": delta_train,
+            "mu_test": mu_test,
+            "sigma_test": sigma_test,
+            "delta_test": delta_test,
             "gradient_norm": gradient_norm,
             "epoch": e,
         }
-        """
-        if wandb_log is not None:
-            logging.info("Logging on wandb")
-            wandb_log(metrics)
-        """
 
         # Sample 5 images and their generated counterparts
         img_datasets = []
         img_gens = []
 
-        for i, inputs in zip(range(5), iter(valid_loader)):
+        for i, (inputs, labels) in zip(range(5), iter(valid_loader)):
             img_dataset = inputs[random.randint(0, len(inputs) - 1)]
             if isinstance(model, VAE):
                 img_gen = (

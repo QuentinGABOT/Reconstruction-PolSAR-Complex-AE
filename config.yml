@@ -1,5 +1,5 @@
 data:
-  batch_size: 8
+  batch_size: 64
   characteristics:
     ch_0:
       max: 110.79493
@@ -11,24 +11,25 @@ data:
       max: 125.859604
       min: 8.398932e-06
   img_size: 128
+  img_stride: 16
   num_channels: 3
   num_workers: 4
   trainpath: ../datasets/SAN_FRANCISCO_ALOS2
-  valid_ratio: 0.1
+  valid_ratio: 0.2
 logging:
   logdir: ./logs
   wandb:
     project: gen_cvnn
 loss:
-  kld_weight: 0
-  name: ComplexVAELoss
+  kld_weight: 1
+  name: ComplexMSELoss
 model:
   activation: modReLU
-  channels_ratio: 64
-  class: VAE
+  channels_ratio: 32
+  class: AutoEncoder
   latent_dim: 1024
   num_layers: 7
-nepochs: 2000
+nepochs: 5000
 optim:
   algo: Adam
   params:
