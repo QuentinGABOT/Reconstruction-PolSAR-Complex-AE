@@ -120,12 +120,6 @@ def train(config):
         out_conv = model(dummy_input)
 
     model.to(device)
-    """
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(name, param.numel())
-    input()
-    """
 
     # Build the loss
     logging.info("= Loss")
@@ -140,9 +134,15 @@ def train(config):
     logging_config = config["logging"]
     # Let us use as base logname the class name of the modek
     logname = model_config["model"]["class"]
+
+    if not os.path.isdir(logging_config["logdir"]):
+        os.makedirs(logging_config["logdir"])
+
     logdir = utils.generate_unique_logpath(logging_config["logdir"], logname)
+
     if not os.path.isdir(logdir):
         os.makedirs(logdir)
+
     logging.info(f"Will be logging into {logdir}")
 
     # Copy the config file into the logdir
