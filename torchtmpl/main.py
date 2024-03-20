@@ -166,7 +166,7 @@ def train(config):
         + "## Datasets : \n"
         + f"Train : {train_loader.dataset.dataset}\n"
         + f"Validation : {valid_loader.dataset.dataset}"
-    )
+    ).encode('utf-8')
 
     with open(logdir / "summary.txt", "w") as f:
         f.write(summary_text)
