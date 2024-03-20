@@ -16,7 +16,11 @@ def makejob(commit_id, configpath, nruns):
 #SBATCH --mem=200G
 #SBATCH --tmp=30G
 #SBATCH --partition=gpu_test
-#SBATCH --time=00:10:00
+#SBATCH --time=00:30:00
+#SBATCH --output=logslurms/slurm-%j.out
+#SBATCH --error=logslurms/slurm-%j.err
+
+module load python/3.9.10/gcc-11.2.0
 
 current_dir=`pwd`
 export PATH=$PATH:~/.local/bin
@@ -27,17 +31,15 @@ echo "Running on " $(hostname)
 
 echo "Copying the source directory and data"
 date
-mkdir $TMPDIR/code
-rsync -r --exclude logs --exclude logslurms --exclude configs . $TMPDIR/code
+mkdir $WORKDIR/code
+rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $WORKDIR/code
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
-cd $TMPDIR/code
+cd $WORKDIR/code
 git checkout {commit_id}
 
-
 echo "Setting up the virtual environment"
-python3 -m pip install virtualenv --user
-virtualenv -p python3 venv
+python3 -m venv venv
 source venv/bin/activate
 
 # Install the library
