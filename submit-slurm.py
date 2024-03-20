@@ -31,15 +31,11 @@ echo "Running on " $(hostname)
 
 echo "Copying the source directory and data"
 date
-mkdir $TMPDIR/code
-rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $TMPDIR/code
-ls $TMPDIR
-ls $TMPDIR/code
-rsync -r ../datasets $TMPDIR/datasets
-ls $TMPDIR/datasets
+mkdir $WORKDIR/code
+rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $WORKDIR/code
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
-cd $TMPDIR/code
+cd $WORKDIR/code
 git checkout {commit_id}
 
 echo "Setting up the virtual environment"
