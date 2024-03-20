@@ -17,6 +17,8 @@ def makejob(commit_id, configpath, nruns):
 #SBATCH --tmp=30G
 #SBATCH --partition=gpu_test
 #SBATCH --time=00:10:00
+#SBATCH --output=logslurms/slurm-%j.out
+#SBATCH --error=logslurms/slurm-%j.err
 
 current_dir=`pwd`
 export PATH=$PATH:~/.local/bin
