@@ -33,12 +33,14 @@ echo "Copying the source directory and data"
 date
 mkdir $TMPDIR/code
 rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $TMPDIR/code
-rsync -r ../datasets $TMPDIR/datasets/SAN_FRANCISCO_ALOS2
+ls $TMPDIR
+ls $TMPDIR/code
+rsync -r ../datasets $TMPDIR/datasets
+ls $TMPDIR/datasets
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
 cd $TMPDIR/code
 git checkout {commit_id}
-ls
 
 echo "Setting up the virtual environment"
 python3 -m venv venv
