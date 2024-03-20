@@ -35,11 +35,10 @@ rsync -r --exclude logs --exclude logslurms --exclude configs . $TMPDIR/code
 echo "Checking out the correct version of the code commit_id {commit_id}"
 cd $TMPDIR/code
 git checkout {commit_id}
-
+ls
 
 echo "Setting up the virtual environment"
-python3 -m pip install virtualenv --user
-virtualenv -p python3 venv
+python3 -m venv venv
 source venv/bin/activate
 
 # Install the library
