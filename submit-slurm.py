@@ -16,7 +16,7 @@ def makejob(commit_id, configpath, nruns):
 #SBATCH --mem=200G
 #SBATCH --tmp=30G
 #SBATCH --partition=gpu_test
-#SBATCH --time=00:10:00
+#SBATCH --time=00:30:00
 #SBATCH --output=logslurms/slurm-%j.out
 #SBATCH --error=logslurms/slurm-%j.err
 
