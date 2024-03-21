@@ -3,7 +3,7 @@
 # Standard imports
 import logging
 import sys
-import os
+from os import path, makedirs
 import pathlib
 import random
 
@@ -135,13 +135,13 @@ def train(config):
     # Let us use as base logname the class name of the modek
     logname = model_config["model"]["class"]
 
-    if not os.path.isdir(logging_config["logdir"]):
-        os.makedirs(logging_config["logdir"])
+    if not path.isdir(logging_config["logdir"]):
+        makedirs(logging_config["logdir"])
 
     logdir = utils.generate_unique_logpath(logging_config["logdir"], logname)
 
-    if not os.path.isdir(logdir):
-        os.makedirs(logdir)
+    if not path.isdir(logdir):
+        makedirs(logdir)
 
     logging.info(f"Will be logging into {logdir}")
 
