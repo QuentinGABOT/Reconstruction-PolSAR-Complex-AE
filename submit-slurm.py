@@ -10,7 +10,7 @@ def makejob(commit_id, configpath, nruns):
     return f"""#!/bin/bash
 
 #SBATCH --job-name=monjob
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --gres=gpu:6
 #SBATCH --cpus-per-task=10
 #SBATCH --partition=gpu
