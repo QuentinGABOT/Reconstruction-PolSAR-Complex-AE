@@ -1,5 +1,5 @@
 data:
-  batch_size: 64
+  batch_size: 128
   characteristics:
     ch_0:
       max: 110.79493
@@ -29,7 +29,7 @@ model:
   class: AutoEncoder
   latent_dim: 1024
   num_layers: 7
-nepochs: 5000
+nepochs: 3000
 optim:
   algo: Adam
   params:
