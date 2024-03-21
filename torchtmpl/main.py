@@ -168,8 +168,9 @@ def train(config):
         + f"Validation : {valid_loader.dataset.dataset}"
     )
 
-    with open(logdir / "summary.txt", "w", "utf-8-sig") as f:
+    with open(logdir / "summary.txt", "w", encoding='utf-8') as f:
         f.write(summary_text)
+        
     logging.info(summary_text)
     if wandb_log is not None:
         wandb.log({"summary": summary_text})
