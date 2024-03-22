@@ -75,7 +75,11 @@ def train_epoch(
 
     num_samples = 0
     gradient_norm = 0
-    for inputs, labels in tqdm.tqdm(loader):
+    for data in loader:
+        if isinstance(data, tuple) or isinstance(data, list):
+            inputs, labels = data
+        else:
+            inputs = data
 
         inputs = Variable(inputs).to(device)
         # Forward propagate through the model
@@ -166,7 +170,11 @@ def test_epoch(
 
     num_samples = 0
     with torch.no_grad():
-        for inputs, labels in loader:
+        for data in loader:
+            if isinstance(data, tuple) or isinstance(data, list):
+                inputs, labels = data
+            else:
+                inputs = data
             inputs = Variable(inputs).to(device)
             # Forward propagate through the model
 

@@ -18,7 +18,7 @@ from PIL import Image
 import numpy as np
 
 # Local imports
-from . import data
+from . import data as dt
 from . import models
 from . import optim
 from . import utils
@@ -97,7 +97,7 @@ def train(config):
     logging.info("= Building the dataloaders")
     data_config = config["data"]
 
-    train_loader, valid_loader = tl.data.get_dataloaders(data_config, use_cuda)
+    train_loader, valid_loader = dt.get_dataloaders(data_config, use_cuda)
 
     # Build the model
     logging.info("= Model")
@@ -118,6 +118,11 @@ def train(config):
             requires_grad=False,
         )  # gérer la dimension d'entrée
         out_conv = model(dummy_input)
+
+    # for parallelizing the model
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
 
     model.to(device)
 
@@ -151,7 +156,11 @@ def train(config):
         yaml.dump(config, file)
 
     # Make a summary script of the experiment
-    input_size = next(iter(train_loader))[0].shape
+    if next(iter(train_loader)).shape == 2:
+        input_size = next(iter(train_loader))[0].shape
+    else:
+        input_size = next(iter(train_loader)).shape
+
     summary_text = (
         f"Logdir : {logdir}\n"
         + "## Command \n"
@@ -168,9 +177,9 @@ def train(config):
         + f"Validation : {valid_loader.dataset.dataset}"
     )
 
-    with open(logdir / "summary.txt", "w", encoding='utf-8') as f:
+    with open(logdir / "summary.txt", "w", encoding="utf-8") as f:
         f.write(summary_text)
-        
+
     logging.info(summary_text)
     if wandb_log is not None:
         wandb.log({"summary": summary_text})
@@ -245,7 +254,11 @@ def train(config):
         img_datasets = []
         img_gens = []
 
-        for i, (inputs, labels) in zip(range(5), iter(valid_loader)):
+        for i, data in zip(range(5), iter(valid_loader)):
+            if isinstance(data, tuple) or isinstance(data, list):
+                inputs, labels = data
+            else:
+                inputs = data
             img_dataset = inputs[random.randint(0, len(inputs) - 1)]
             if isinstance(model, VAE):
                 img_gen = (
@@ -267,7 +280,7 @@ def train(config):
         # Call the modified show_image function
         if e % 10 == 0:
             last = True
-        data.show_images(img_datasets, img_gens, image_path, last)
+        dt.show_images(img_datasets, img_gens, image_path, last)
         imgs = Image.open(image_path)
 
         # Log to wandb

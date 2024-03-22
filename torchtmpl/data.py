@@ -8,6 +8,8 @@ from numpy import linalg as LA
 import os
 import glob
 import shutil
+import pathlib
+
 
 import torch
 import torch.nn as nn
@@ -15,6 +17,7 @@ import torch.utils.data
 from torchvision import transforms
 
 from torchcvnn.datasets.polsf import PolSFDataset
+from torchcvnn.datasets import ALOSDataset
 
 
 class LogAmplitudeTransform:
@@ -801,30 +804,29 @@ def get_dataloaders(data_config, use_cuda):
     logging.info("  - Dataset creation")
 
     input_transform = LogAmplitudeTransform(data_config["characteristics"])
+
+    base_dataset = ALOSDataset(
+        volpath=pathlib.Path(data_config["trainpath"])
+        / "VOL-ALOS2044980750-150324-HBQR1.1__A",
+        transform=input_transform,
+        crop_coordinates=((900, 0), (2000, 22608)),
+    )
+    """
     base_dataset = PolSFDataset(
         root=data_config["trainpath"],
         transform=input_transform,
         patch_size=img_size,
         patch_stride=img_stride,
     )
+    """
 
     logging.info(f"  - I loaded {len(base_dataset)} samples")
 
-    # indices = list(range(len(base_dataset)))
-    # valid_indices = [79, 82, 84, 86, 88]
-    indices = list(range(1000))
-    # train_indices = [num for num in indices if num not in valid_indices]
-    # train_indices = [num for num in indices]
-    # valid_indices = valid_indices
-    # random.shuffle(indices)
-    # num_valid = int(valid_ratio * len(base_dataset))
+    indices = list(range(len(base_dataset)))
+    random.shuffle(indices)
     num_valid = int(valid_ratio * len(indices))
     train_indices = indices[num_valid:]
     valid_indices = indices[:num_valid]
-    # train_indices = [78, 98] * 500
-    # valid_indices = [78, 98] * 500
-    # train_indices = [78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 98] * 10
-    # valid_indices = [78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 98] * 10
 
     train_dataset = torch.utils.data.Subset(base_dataset, train_indices)
     valid_dataset = torch.utils.data.Subset(base_dataset, valid_indices)
