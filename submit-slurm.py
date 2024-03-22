@@ -33,18 +33,15 @@ echo "Copying the source directory and data"
 date
 rm -r $WORKDIR/code
 mkdir $WORKDIR/code
-rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $WORKDIR/code
+rsync -r --exclude logs --exclude logslurms --exclude configs . $WORKDIR/code
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
 cd $WORKDIR/code
 git checkout {commit_id}
 
 echo "Setting up the virtual environment"
-python3 -m venv venv
-source venv/bin/activate
 
-# Install the library
-python -m pip install .
+source venv/bin/activate
 
 echo "Training"
 python -m torchtmpl.main {configpath} train
