@@ -25,7 +25,8 @@ class ComplexAmplitudePhaseError(nn.Module):
         MSELoss = ComplexMSELoss()
         mse = MSELoss(torch.abs(y_true), torch.abs(y_pred))
         mean_phase_error = torch.mean(
-            torch.abs(y_true) * torch.square(torch.angle(y_true) - torch.angle(y_pred))
+            torch.abs(y_true)
+            * (1 - torch.cos(torch.angle(y_true) - torch.angle(y_pred)))
         )
 
         return mse + mean_phase_error
