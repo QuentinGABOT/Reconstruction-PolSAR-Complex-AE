@@ -15,7 +15,7 @@ def makejob(commit_id, configpath, nruns):
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=200G
 #SBATCH --tmp=30G
-#SBATCH --partition=gpua100
+#SBATCH --partition=gpu
 #SBATCH --time=24:00:00
 #SBATCH --output=logslurms/slurm-%j.out
 #SBATCH --error=logslurms/slurm-%j.err
@@ -32,6 +32,7 @@ echo "Running on " $(hostname)
 echo "Copying the source directory and data"
 date
 
+rm -r $WORKDIR/code
 mkdir $WORKDIR/code
 rsync -r --exclude logs --exclude logslurms --exclude configs . $WORKDIR/code
 
