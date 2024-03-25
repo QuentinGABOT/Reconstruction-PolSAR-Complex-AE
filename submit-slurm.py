@@ -42,7 +42,6 @@ git checkout {commit_id}
 
 echo "Setting up the virtual environment"
 
-python3 -m venv venv
 source venv/bin/activate
 
 # Install the library
