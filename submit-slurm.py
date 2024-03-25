@@ -20,7 +20,7 @@ def makejob(commit_id, configpath, nruns):
 #SBATCH --output=logslurms/slurm-%j.out
 #SBATCH --error=logslurms/slurm-%j.err
 
-module load python/3.9.10/gcc-11.2.0
+module load python/3.9.10/intel-20.0.4.304
 
 current_dir=`pwd`
 export PATH=$PATH:~/.local/bin
