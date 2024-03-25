@@ -75,7 +75,7 @@ def train_epoch(
 
     num_samples = 0
     gradient_norm = 0
-    for data in loader:
+    for data in tqdm.tqdm(loader):
         if isinstance(data, tuple) or isinstance(data, list):
             inputs, labels = data
         else:
@@ -170,7 +170,7 @@ def test_epoch(
 
     num_samples = 0
     with torch.no_grad():
-        for data in loader:
+        for data in tqdm.tqdm(loader):
             if isinstance(data, tuple) or isinstance(data, list):
                 inputs, labels = data
             else:
