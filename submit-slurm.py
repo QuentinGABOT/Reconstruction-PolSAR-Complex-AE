@@ -32,7 +32,7 @@ echo "Running on " $(hostname)
 echo "Copying the source directory and data"
 date
 
-mkdir $WORKDIR/code
+mkdir $TMPDIR/code
 rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $WORKDIR/code
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
