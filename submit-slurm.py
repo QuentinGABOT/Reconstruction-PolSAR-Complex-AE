@@ -31,7 +31,7 @@ echo "Running on " $(hostname)
 
 echo "Copying the source directory and data"
 date
-rm -r $WORKDIR/code
+
 mkdir $WORKDIR/code
 rsync -r --exclude logs --exclude logslurms --exclude configs . $WORKDIR/code
 
