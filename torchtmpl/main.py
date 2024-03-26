@@ -3,7 +3,7 @@
 # Standard imports
 import logging
 import sys
-from os import path, makedirs, environ
+from os import path, makedirs
 import pathlib
 import random
 
@@ -14,9 +14,6 @@ import torch
 import torch.nn as nn
 import torchinfo.torchinfo as torchinfo
 import torchcvnn.nn.modules as c_nn
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.multiprocessing as mp
 from PIL import Image
 import numpy as np
 
@@ -27,15 +24,6 @@ from . import optim
 from . import utils
 import torchtmpl as tl
 from torchtmpl.models import VAE, UNet, AutoEncoder
-
-
-def cleanup():
-    dist.destroy_process_group()
-
-def setup(rank, world_size):
-    environ['MASTER_ADDR'] = 'localhost'
-    environ['MASTER_PORT'] = '12355'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 
 def init_weights(m):
@@ -58,7 +46,7 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def train(config, rank, world_size):
+def train(config):
     """
     Train function
 
@@ -90,8 +78,6 @@ def train(config, rank, world_size):
     print("Done")
     input()
     """
-    # setup the process groups
-    setup(rank, world_size)
 
     # seed_everything(2000)
     cdtype = torch.complex64
@@ -111,8 +97,7 @@ def train(config, rank, world_size):
     logging.info("= Building the dataloaders")
     data_config = config["data"]
 
-    train_loader, valid_loader = dt.get_dataloaders(data_config, use_cuda, rank, world_size)
-
+    train_loader, valid_loader = dt.get_dataloaders(data_config, use_cuda)
 
     # Build the model
     logging.info("= Model")
@@ -134,23 +119,12 @@ def train(config, rank, world_size):
         )  # gérer la dimension d'entrée
         out_conv = model(dummy_input)
 
-    '''
     # for parallelizing the model
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
 
     model.to(device)
-    '''
-    # instantiate the model(it's your own model) and move it to the right device
-    model = model.to(rank)
-    
-    # wrap the model with DDP
-    # device_ids tell DDP where is your model
-    # output_device tells DDP where to output, in our case, it is rank
-    # find_unused_parameters=True instructs DDP to find unused output of the forward() function of any module in the model
-    model = DDP(model, device_ids=[rank], output_device=rank, find_unused_parameters=True)
-
 
     # Build the loss
     logging.info("= Loss")
@@ -216,7 +190,6 @@ def train(config, rank, world_size):
     )
 
     for e in range(config["nepochs"] + 1):
-        torch.cuda.set_device(rank)
         last = False
         # Train 1 epoch
         (
@@ -229,65 +202,24 @@ def train(config, rank, world_size):
             delta_train,
         ) = utils.train_epoch(
             model=model,
-            loader=train_loader.sampler.set_epoch(e),
+            loader=train_loader,
             f_loss=loss,
             optim=optimizer,
             device=device,
             config=config,
         )
 
-        group_gather_train_loss = [torch.zeros_like(train_loss) for _ in range(world_size)]
-        dist.all_gather(group_gather_train_loss, train_loss)
-        train_loss = torch.mean(torch.stack(group_gather_train_loss))
-        group_gather_gradient_norm = [torch.zeros_like(gradient_norm) for _ in range(world_size)]
-        dist.all_gather(group_gather_gradient_norm, gradient_norm)
-        gradient_norm = torch.mean(torch.stack(group_gather_gradient_norm))
-        group_gather_train_recon_loss = [torch.zeros_like(train_recon_loss) for _ in range(world_size)]
-        dist.all_gather(group_gather_train_recon_loss, train_recon_loss)
-        train_recon_loss = torch.mean(torch.stack(group_gather_train_recon_loss))
-        group_gather_train_kld = [torch.zeros_like(train_kld) for _ in range(world_size)]
-        dist.all_gather(group_gather_train_kld, train_kld)
-        train_kld = torch.mean(torch.stack(group_gather_train_kld))
-        group_gather_mu_train = [torch.zeros_like(mu_train) for _ in range(world_size)]
-        dist.all_gather(group_gather_mu_train, mu_train)
-        mu_train = torch.mean(torch.stack(group_gather_mu_train))
-        group_gather_sigma_train = [torch.zeros_like(sigma_train) for _ in range(world_size)]
-        dist.all_gather(group_gather_sigma_train, sigma_train)
-        sigma_train = torch.mean(torch.stack(group_gather_sigma_train))
-        group_gather_delta_train = [torch.zeros_like(delta_train) for _ in range(world_size)]
-        dist.all_gather(group_gather_delta_train, delta_train)
-        delta_train = torch.mean(torch.stack(group_gather_delta_train))
-                  
         # Test
         test_loss, test_recon_loss, test_kld, mu_test, sigma_test, delta_test = (
             utils.test_epoch(
                 model=model,
-                loader=valid_loader.sampler.set_epoch(e),
+                loader=valid_loader,
                 f_loss=loss,
                 device=device,
                 config=config,
             )
         )
 
-        group_gather_test_loss = [torch.zeros_like(test_loss) for _ in range(world_size)]
-        dist.all_gather(group_gather_test_loss, test_loss)
-        test_loss = torch.mean(torch.stack(group_gather_test_loss))
-        group_gather_test_recon_loss = [torch.zeros_like(test_recon_loss) for _ in range(world_size)]
-        dist.all_gather(group_gather_test_recon_loss, test_recon_loss)
-        test_recon_loss = torch.mean(torch.stack(group_gather_test_recon_loss))
-        group_gather_test_kld = [torch.zeros_like(test_kld) for _ in range(world_size)]
-        dist.all_gather(group_gather_test_kld, test_kld)
-        test_kld = torch.mean(torch.stack(group_gather_test_kld))
-        group_gather_mu_test = [torch.zeros_like(mu_test) for _ in range(world_size)]
-        dist.all_gather(group_gather_mu_test, mu_test)
-        mu_test = torch.mean(torch.stack(group_gather_mu_test))
-        group_gather_sigma_test = [torch.zeros_like(sigma_test) for _ in range(world_size)]
-        dist.all_gather(group_gather_sigma_test, sigma_test)
-        sigma_test = torch.mean(torch.stack(group_gather_sigma_test))
-        group_gather_delta_test = [torch.zeros_like(delta_test) for _ in range(world_size)]
-        dist.all_gather(group_gather_delta_test, delta_test)
-        delta_test = torch.mean(torch.stack(group_gather_delta_test))
-        
         updated = model_checkpoint.update(test_loss)
 
         logging.info(
@@ -360,18 +292,7 @@ def train(config, rank, world_size):
             wandb.log(metrics)
 
     wandb.finish()
-    cleanup()
 
-
-def test(config, rank, world_size):
-    pass
-
-def run(rank, world_size, config, func):
-    # Wrapper function for multiprocessing
-    if func == "train":
-        train(config, rank, world_size)
-    elif func == "test":
-        test(config, rank, world_size)
 
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
@@ -384,12 +305,4 @@ if __name__ == "__main__":
     config = yaml.safe_load(open(sys.argv[1], "r"))
 
     command = sys.argv[2]
-
-    # Assume we have 3 GPUs
-    world_size = config["world_size"]
-    mp.spawn(
-        run,
-        args=(world_size, config, command,),
-        nprocs=world_size,
-        join=True
-    )
+    eval(f"{command}(config)")

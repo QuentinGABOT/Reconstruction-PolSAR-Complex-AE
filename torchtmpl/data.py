@@ -14,7 +14,6 @@ import pathlib
 import torch
 import torch.nn as nn
 import torch.utils.data
-from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 
 from torchcvnn.datasets.polsf import PolSFDataset
@@ -795,14 +794,7 @@ def show_images(samples, generated, image_path, last):
     plt.close()
 
 
-def prepare(dataset, rank, world_size, batch_size, shuffle, pin_memory=False, num_workers=0):
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
-    
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, shuffle=shuffle, sampler=sampler)
-    
-    return dataloader
-
-def get_dataloaders(data_config, use_cuda, rank, world_size):
+def get_dataloaders(data_config, use_cuda):
     img_size = (data_config["img_size"], data_config["img_size"])
     img_stride = (data_config["img_stride"], data_config["img_stride"])
     valid_ratio = data_config["valid_ratio"]
@@ -839,7 +831,6 @@ def get_dataloaders(data_config, use_cuda, rank, world_size):
     train_dataset = torch.utils.data.Subset(base_dataset, train_indices)
     valid_dataset = torch.utils.data.Subset(base_dataset, valid_indices)
 
-    '''
     # Build the dataloaders
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -856,9 +847,6 @@ def get_dataloaders(data_config, use_cuda, rank, world_size):
         num_workers=num_workers,
         pin_memory=use_cuda,
     )
-    '''
-    train_loader = prepare(train_dataset, rank=rank, world_size=world_size, batch_size=batch_size, shuffle=True)
-    valid_loader = prepare(valid_dataset, rank=rank, world_size=world_size, batch_size=batch_size, shuffle=False)
 
     return train_loader, valid_loader
 

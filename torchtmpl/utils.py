@@ -109,7 +109,7 @@ def train_epoch(
             loss = f_loss(pred_outputs, inputs)
 
         # Backward pass and update
-        optim.zero_grad(set_to_none=True)
+        optim.zero_grad()
         loss.backward()
 
         # Compute the norm of the gradients
