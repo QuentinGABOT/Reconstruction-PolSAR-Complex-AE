@@ -119,11 +119,6 @@ def train(config):
         )  # gérer la dimension d'entrée
         out_conv = model(dummy_input)
 
-    # for parallelizing the model
-    if torch.cuda.device_count() > 1:
-        print("Let's use", torch.cuda.device_count(), "GPUs!")
-        model = nn.DataParallel(model)
-
     model.to(device)
 
     # Build the loss
