@@ -2,7 +2,11 @@
 import torch
 import torch.nn as nn
 from torchcvnn.nn.modules.loss import ComplexMSELoss
-from torchtmpl.losses import ComplexVAELoss, ComplexVAEPhaseLoss
+from torchtmpl.losses import (
+    ComplexVAELoss,
+    ComplexVAEPhaseLoss,
+    ComplexAmplitudePhaseError,
+)
 
 
 def get_loss(lossname):
