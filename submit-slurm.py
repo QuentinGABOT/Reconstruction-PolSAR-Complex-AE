@@ -11,7 +11,7 @@ def makejob(commit_id, configpath, nruns):
 
 #SBATCH --job-name=monjob
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=200G
 #SBATCH --tmp=30G
@@ -31,18 +31,21 @@ echo "Running on " $(hostname)
 
 echo "Copying the source directory and data"
 date
-rm -r $WORKDIR/code
-mkdir $WORKDIR/code
-rsync -r --exclude logs --exclude logslurms --exclude configs . $WORKDIR/code
+
+mkdir $TMPDIR/code
+rsync -r --exclude logs --exclude logslurms --exclude configs --exclude venv . $TMPDIR/code
 
 echo "Checking out the correct version of the code commit_id {commit_id}"
-cd $WORKDIR/code
+cd $TMPDIR/code
 git checkout {commit_id}
 
 echo "Setting up the virtual environment"
 
 python3 -m venv venv
 source venv/bin/activate
+
+# Install the library
+python -m pip install .
 
 echo "Training"
 python -m torchtmpl.main {configpath} train
