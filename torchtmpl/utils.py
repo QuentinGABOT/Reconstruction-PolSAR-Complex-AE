@@ -221,6 +221,7 @@ class ModelCheckpoint(object):
     def __init__(
         self,
         model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
         savepath: str,
         num_input_dims: int,
         min_is_best: bool = True,
@@ -235,6 +236,7 @@ class ModelCheckpoint(object):
             min_is_best: whether the min metric or the max metric as the best
         """
         self.model = model
+        self.optimizer = optimizer
         self.savepath = savepath
         self.num_input_dims = num_input_dims
         self.best_score = None
@@ -267,7 +269,7 @@ class ModelCheckpoint(object):
         """
         return self.best_score is None or score > self.best_score
 
-    def update(self, score: float) -> bool:
+    def update(self, score: float, epoch: int, seed: int, wandb_id, logdir) -> bool:
         """
         If the provided score is better than the best score registered so far,
         saves the model's parameters on disk as a pytorch tensor
@@ -283,7 +285,16 @@ class ModelCheckpoint(object):
             self.model.eval()
 
             torch.save(
-                self.model.state_dict(), os.path.join(self.savepath, "best_model.pt")
+                {
+                    "epoch": epoch,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "loss": score,
+                    "seed": seed,
+                    "wandb_id": wandb_id,
+                    "logdir": logdir,
+                },
+                os.path.join(self.savepath, "best_model.pt"),
             )
 
             # torch.onnx.export(

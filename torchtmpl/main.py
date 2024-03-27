@@ -11,6 +11,7 @@ import random
 import yaml
 import wandb
 import torch
+import math
 import torch.nn as nn
 import torchinfo.torchinfo as torchinfo
 import torchcvnn.nn.modules as c_nn
@@ -46,47 +47,43 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def load_model(model_path, config, device):
+    model = models.build_model(config).to(device)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.eval()
+    return model
+
+
 def train(config):
-    """
-    Train function
-
-    Sample output :
-        ```.bash
-        (venv) me@host:~$ python mnist.py
-        Logging to ./logs/CMNIST_0
-        >> Training
-        100%|██████| 844/844 [00:17<00:00, 48.61it/s]
-        >> Testing
-        [Step 0] Train : CE  0.20 Acc  0.94 | Valid : CE  0.08 Acc  0.97 | Test : CE 0.06 Acc  0.98[>> BETTER <<]
-
-        >> Training
-        100%|██████| 844/844 [00:16<00:00, 51.69it/s]
-        >> Testing
-        [Step 1] Train : CE  0.06 Acc  0.98 | Valid : CE  0.06 Acc  0.98 | Test : CE 0.05 Acc  0.98[>> BETTER <<]
-
-        >> Training
-        100%|██████| 844/844 [00:15<00:00, 53.47it/s]
-        >> Testing
-        [Step 2] Train : CE  0.04 Acc  0.99 | Valid : CE  0.04 Acc  0.99 | Test : CE 0.04 Acc  0.99[>> BETTER <<]
-
-        [...]
-        ```
-
-    """
     """
     data.delete_folders_with_few_pngs()
     print("Done")
     input()
     """
 
-    # seed_everything(2000)
+    if config["pretrained"]["check"]:
+        checkpoint_path = config["pretrained"]["path"]
+        checkpoint = torch.load(checkpoint_path)
+        seed = checkpoint["seed"]
+        seed_everything(seed)
+    else:
+        seed = math.floor(random.random() * 10000)
+        seed_everything(seed)
+
     cdtype = torch.complex64
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda") if use_cuda else torch.device("cpu")
 
     if "wandb" in config["logging"]:
         wandb_config = config["logging"]["wandb"]
-        wandb.init(project=wandb_config["project"])
+        if config["pretrained"]["check"]:
+            wandb.init(
+                project=wandb_config["project"],
+                resume="must",
+                id=checkpoint["wandb_id"],
+            )
+        else:
+            wandb.init(project=wandb_config["project"])
         wandb_log = wandb.log
         wandb_log(config)
         logging.info(f"Will be recording in wandb run name : {wandb.run.name}")
@@ -102,8 +99,15 @@ def train(config):
     # Build the model
     logging.info("= Model")
     model_config = config
+
     model = models.build_model(model_config)
     model.apply(init_weights)
+
+    if config["pretrained"]["check"]:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        model = models.build_model(config)
+        model.apply(init_weights)
 
     with torch.no_grad():
         model.eval()
@@ -130,6 +134,12 @@ def train(config):
     optim_config = config["optim"]
     optimizer = tl.optim.get_optimizer(optim_config, model.parameters())
 
+    epoch = 1
+
+    if config["pretrained"]["check"]:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        epoch = checkpoint["epoch"] + 1  # Start from the next epoch
+
     # Build the callbacks
     logging_config = config["logging"]
     # Let us use as base logname the class name of the modek
@@ -138,10 +148,12 @@ def train(config):
     if not path.isdir(logging_config["logdir"]):
         makedirs(logging_config["logdir"])
 
-    logdir = utils.generate_unique_logpath(logging_config["logdir"], logname)
-
-    if not path.isdir(logdir):
-        makedirs(logdir)
+    if config["pretrained"]["check"]:
+        logdir = checkpoint["logdir"]
+    else:
+        logdir = utils.generate_unique_logpath(logging_config["logdir"], logname)
+        if not path.isdir(logdir):
+            makedirs(logdir)
 
     logging.info(f"Will be logging into {logdir}")
 
@@ -181,10 +193,10 @@ def train(config):
 
     # Define the early stopping callback
     model_checkpoint = utils.ModelCheckpoint(
-        model, logdir, len(input_size), min_is_best=True
+        model, optimizer, logdir, len(input_size), min_is_best=True
     )
 
-    for e in range(config["nepochs"] + 1):
+    for e in range(epoch, config["nepochs"] + epoch):
         last = False
         # Train 1 epoch
         (
@@ -215,13 +227,15 @@ def train(config):
             )
         )
 
-        updated = model_checkpoint.update(test_loss)
+        updated = model_checkpoint.update(
+            epoch=e, score=test_loss, seed=seed, wandb_id=wandb.run.id, logdir=logdir
+        )
 
         logging.info(
             "[%d/%d] Test loss : %.3f %s"
             % (
                 e,
-                config["nepochs"],
+                config["nepochs"] + epoch,
                 test_loss,
                 "[>> BETTER <<]" if updated else "",
             )
