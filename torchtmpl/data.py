@@ -797,6 +797,10 @@ def show_images(samples, generated, image_path, last):
 def get_dataloaders(data_config, use_cuda):
     img_size = (data_config["img_size"], data_config["img_size"])
     img_stride = (data_config["img_stride"], data_config["img_stride"])
+    start_row = data_config["start_row"]
+    start_col = data_config["start_col"]
+    n_rows = data_config["n_rows"]
+    n_cols = data_config["n_cols"]
     valid_ratio = data_config["valid_ratio"]
     batch_size = data_config["batch_size"]
     num_workers = data_config["num_workers"]
@@ -811,7 +815,7 @@ def get_dataloaders(data_config, use_cuda):
         patch_size=img_size,
         patch_stride=img_stride,
         transform=input_transform,
-        crop_coordinates=((3000, 1000), (7500, 3200)),
+        crop_coordinates=((start_row, start_col), (n_rows, n_cols)),
     )
 
     """
