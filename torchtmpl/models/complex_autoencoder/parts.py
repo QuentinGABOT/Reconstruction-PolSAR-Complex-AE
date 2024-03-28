@@ -99,9 +99,7 @@ class Dense(nn.Module):
         self.dense = nn.Sequential(
             nn.Flatten(start_dim=1),
             nn.Linear(linear, latent_dim, dtype=torch.complex64),
-            c_nn.modReLU(),
             nn.Linear(latent_dim, linear, dtype=torch.complex64),
-            c_nn.modReLU(),
             nn.Unflatten(dim=1, unflattened_size=(in_channels, input_size, input_size)),
         )
 

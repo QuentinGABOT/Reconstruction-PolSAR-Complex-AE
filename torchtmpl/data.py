@@ -808,6 +808,8 @@ def get_dataloaders(data_config, use_cuda):
     base_dataset = ALOSDataset(
         volpath=pathlib.Path(data_config["trainpath"])
         / "VOL-ALOS2044980750-150324-HBQR1.1__A",
+        patch_size=img_size,
+        patch_stride=img_stride,
         transform=input_transform,
         crop_coordinates=((3000, 1000), (7500, 3200)),
     )
