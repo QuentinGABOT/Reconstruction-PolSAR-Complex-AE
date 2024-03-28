@@ -809,8 +809,9 @@ def get_dataloaders(data_config, use_cuda):
         volpath=pathlib.Path(data_config["trainpath"])
         / "VOL-ALOS2044980750-150324-HBQR1.1__A",
         transform=input_transform,
-        crop_coordinates=((900, 0), (2000, 22608)),
+        crop_coordinates=((3000, 1000), (7500, 3200)),
     )
+
     """
     base_dataset = PolSFDataset(
         root=data_config["trainpath"],

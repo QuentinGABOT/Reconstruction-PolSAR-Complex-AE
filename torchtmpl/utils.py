@@ -81,7 +81,7 @@ def train_epoch(
         else:
             inputs = data
 
-        inputs = Variable(inputs).to(device)
+        inputs = Variable(inputs, requires_grad=False).to(device)
         # Forward propagate through the model
         if isinstance(model, VAE):
             pred_outputs, mu, sigma, delta = model(inputs)
@@ -111,6 +111,9 @@ def train_epoch(
         # Backward pass and update
         optim.zero_grad()
         loss.backward()
+
+        # clip_grad_norm helps prevent the exploding gradient problem
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.1, norm_type=2)
 
         # Compute the norm of the gradients
         total_norm = 0.0
