@@ -54,13 +54,7 @@ def load_model(model_path, config, device):
     return model
 
 
-def train(config):
-    """
-    data.delete_folders_with_few_pngs()
-    print("Done")
-    input()
-    """
-
+def load(config):
     if config["pretrained"]["check"]:
         checkpoint_path = config["pretrained"]["path"]
         checkpoint = torch.load(checkpoint_path)
@@ -191,6 +185,42 @@ def train(config):
     if wandb_log is not None:
         wandb.log({"summary": summary_text})
 
+    return (
+        model,
+        optimizer,
+        loss,
+        train_loader,
+        valid_loader,
+        device,
+        input_size,
+        epoch,
+        seed,
+        wandb_log,
+        logdir,
+    )
+
+
+def train(config):
+    """
+    data.delete_folders_with_few_pngs()
+    print("Done")
+    input()
+    """
+
+    (
+        model,
+        optimizer,
+        loss,
+        train_loader,
+        valid_loader,
+        device,
+        input_size,
+        epoch,
+        seed,
+        wandb_log,
+        logdir,
+    ) = load(config)
+
     # Define the early stopping callback
     model_checkpoint = utils.ModelCheckpoint(
         model, optimizer, logdir, len(input_size), min_is_best=True
@@ -259,48 +289,65 @@ def train(config):
             "epoch": e,
         }
 
-        # Sample 5 images and their generated counterparts
-        img_datasets = []
-        img_gens = []
+        image_path_valid = visualize_images(
+            valid_loader, model, device, logdir, e, last, train=False
+        )
+        image_path_train = visualize_images(
+            train_loader, model, device, logdir, e, last, train=True
+        )
 
-        for i, data in zip(range(5), iter(valid_loader)):
-            if isinstance(data, tuple) or isinstance(data, list):
-                inputs, labels = data
-            else:
-                inputs = data
-            img_dataset = inputs[random.randint(0, len(inputs) - 1)]
-            if isinstance(model, VAE):
-                img_gen = (
-                    model(img_dataset.unsqueeze_(0).to(device))[0]
-                    .cpu()
-                    .detach()
-                    .numpy()
-                )
-                # img_gens.append(img_gen[0, :, :, :])
-            else:
-                img_gen = (
-                    model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
-                )
-                # img_gens.append(img_gen)
-            img_datasets.append(img_dataset[0, :, :, :].numpy())
-            img_gens.append(img_gen[0, :, :, :])
-
-        image_path = logdir / f"output_{e}.png"
-        # Call the modified show_image function
-        if e % 10 == 0:
-            last = True
-        dt.show_images(img_datasets, img_gens, image_path, last)
-        imgs = Image.open(image_path)
-
+        imgs_valid = Image.open(image_path_valid)
+        imgs_train = Image.open(image_path_train)
         # Log to wandb
         if wandb_log is not None:
             logging.info("Logging on wandb")
             wandb.log(
-                {"generated_images": [wandb.Image(imgs, caption="Epoch: {}".format(e))]}
+                {
+                    "generated_valid_images": [
+                        wandb.Image(imgs_valid, caption="Epoch: {}".format(e))
+                    ]
+                }
+            )
+            wandb.log(
+                {
+                    "generated_train_images": [
+                        wandb.Image(imgs_train, caption="Epoch: {}".format(e))
+                    ]
+                }
             )
             wandb.log(metrics)
 
     wandb.finish()
+
+
+def visualize_images(data_loader, model, device, logdir, e, last=False, train=False):
+    # Sample 5 images and their generated counterparts
+    img_datasets = []
+    img_gens = []
+
+    for i, data in zip(range(5), iter(data_loader)):
+        if isinstance(data, tuple) or isinstance(data, list):
+            inputs, labels = data
+        else:
+            inputs = data
+        img_dataset = inputs[random.randint(0, len(inputs) - 1)]
+        if isinstance(model, VAE):
+            img_gen = (
+                model(img_dataset.unsqueeze_(0).to(device))[0].cpu().detach().numpy()
+            )
+        else:
+            img_gen = model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
+        img_datasets.append(img_dataset[0, :, :, :].numpy())
+        img_gens.append(img_gen[0, :, :, :])
+    if train:
+        image_path = logdir / f"output_{e}_train.png"
+    else:
+        image_path = logdir / f"output_{e}_valid.png"
+    # Call the modified show_image function
+    if e % 10 == 0:
+        last = True
+    dt.show_images(img_datasets, img_gens, image_path, last)
+    return image_path
 
 
 if __name__ == "__main__":
