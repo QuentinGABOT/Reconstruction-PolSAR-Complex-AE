@@ -200,6 +200,36 @@ def load(config):
     )
 
 
+def visualize_images(data_loader, model, device, logdir, e, last=False, train=False):
+    # Sample 5 images and their generated counterparts
+    img_datasets = []
+    img_gens = []
+
+    for i, data in zip(range(5), iter(data_loader)):
+        if isinstance(data, tuple) or isinstance(data, list):
+            inputs, labels = data
+        else:
+            inputs = data
+        img_dataset = inputs[random.randint(0, len(inputs) - 1)]
+        if isinstance(model, VAE):
+            img_gen = (
+                model(img_dataset.unsqueeze_(0).to(device))[0].cpu().detach().numpy()
+            )
+        else:
+            img_gen = model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
+        img_datasets.append(img_dataset[0, :, :, :].numpy())
+        img_gens.append(img_gen[0, :, :, :])
+    if train:
+        image_path = logdir / f"output_{e}_train.png"
+    else:
+        image_path = logdir / f"output_{e}_valid.png"
+    # Call the modified show_image function
+    if e % 10 == 0:
+        last = True
+    dt.show_images(img_datasets, img_gens, image_path, last)
+    return image_path
+
+
 def train(config):
     """
     data.delete_folders_with_few_pngs()
@@ -320,34 +350,20 @@ def train(config):
     wandb.finish()
 
 
-def visualize_images(data_loader, model, device, logdir, e, last=False, train=False):
-    # Sample 5 images and their generated counterparts
-    img_datasets = []
-    img_gens = []
-
-    for i, data in zip(range(5), iter(data_loader)):
-        if isinstance(data, tuple) or isinstance(data, list):
-            inputs, labels = data
-        else:
-            inputs = data
-        img_dataset = inputs[random.randint(0, len(inputs) - 1)]
-        if isinstance(model, VAE):
-            img_gen = (
-                model(img_dataset.unsqueeze_(0).to(device))[0].cpu().detach().numpy()
-            )
-        else:
-            img_gen = model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
-        img_datasets.append(img_dataset[0, :, :, :].numpy())
-        img_gens.append(img_gen[0, :, :, :])
-    if train:
-        image_path = logdir / f"output_{e}_train.png"
-    else:
-        image_path = logdir / f"output_{e}_valid.png"
-    # Call the modified show_image function
-    if e % 10 == 0:
-        last = True
-    dt.show_images(img_datasets, img_gens, image_path, last)
-    return image_path
+def test(config):
+    (
+        model,
+        optimizer,
+        loss,
+        train_loader,
+        valid_loader,
+        device,
+        input_size,
+        epoch,
+        seed,
+        wandb_log,
+        logdir,
+    ) = load(config)
 
 
 if __name__ == "__main__":
