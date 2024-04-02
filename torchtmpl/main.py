@@ -5,6 +5,7 @@ import logging
 import sys
 from os import path, makedirs
 import pathlib
+import shutil
 import random
 
 # External imports
@@ -55,14 +56,18 @@ def load_model(model_path, config, device):
 
 
 def load(config):
-    if config["pretrained"]["check"]:
-        checkpoint_path = config["pretrained"]["path"]
-        checkpoint = torch.load(checkpoint_path)
-        seed = checkpoint["seed"]
+
+    log_path = config["logging"]["logdir"]
+
+    if config["pretrained"]:
+        seed = config["seed"]
         seed_everything(seed)
     else:
         seed = math.floor(random.random() * 10000)
+        config["seed"] = seed
         seed_everything(seed)
+
+    dt.delete_folders_with_few_pngs(log_path=log_path)
 
     cdtype = torch.complex64
     use_cuda = torch.cuda.is_available()
@@ -70,14 +75,16 @@ def load(config):
 
     if "wandb" in config["logging"]:
         wandb_config = config["logging"]["wandb"]
-        if config["pretrained"]["check"]:
+        if config["pretrained"]:
             wandb.init(
                 project=wandb_config["project"],
                 resume="must",
-                id=checkpoint["wandb_id"],
+                id=config["logging"]["wandb"]["run_id"],
+                config=config,
             )
         else:
-            wandb.init(project=wandb_config["project"])
+            wandb.init(project=wandb_config["project"], config=config)
+            config["logging"]["wandb"]["run_id"] = wandb.run.id
         wandb_log = wandb.log
         wandb_log(config)
         logging.info(f"Will be recording in wandb run name : {wandb.run.name}")
@@ -90,14 +97,19 @@ def load(config):
 
     train_loader, valid_loader = dt.get_dataloaders(data_config, use_cuda)
 
+    # Load the checkpoint if needed
+    if config["pretrained"]:
+        checkpoint_path = log_path + "/best_model.pt"
+        checkpoint = torch.load(checkpoint_path)
+        logging.info(f"Loading checkpoint from {checkpoint_path}")
+
     # Build the model
     logging.info("= Model")
-    model_config = config
 
-    model = models.build_model(model_config)
+    model = models.build_model(config)
     model.apply(init_weights)
 
-    if config["pretrained"]["check"]:
+    if config["pretrained"]:
         model.load_state_dict(checkpoint["model_state_dict"])
     else:
         model = models.build_model(config)
@@ -130,30 +142,30 @@ def load(config):
 
     epoch = 1
 
-    if config["pretrained"]["check"]:
+    if config["pretrained"]:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         epoch = checkpoint["epoch"] + 1  # Start from the next epoch
 
-    # Build the callbacks
-    logging_config = config["logging"]
-    # Let us use as base logname the class name of the modek
-    logname = model_config["model"]["class"]
-
-    if not path.isdir(logging_config["logdir"]):
-        makedirs(logging_config["logdir"])
-
-    if config["pretrained"]["check"]:
-        logdir = checkpoint["logdir"]
+    # Copy the config file into the logdir
+    # Let us use as base logname the class name of the model when wandb is not used
+    logname = config["model"]["class"]
+    if not path.isdir(log_path):
+        makedirs(log_path)
+    if config["pretrained"]:
+        logdir = log_path
     else:
-        logdir = utils.generate_unique_logpath(logging_config["logdir"], logname)
+        if "wandb" in config["logging"]:
+            logdir = log_path + "/" + logname + "_" + wandb.run.name
+        else:
+            logdir = utils.generate_unique_logpath(log_path, logname)
         if not path.isdir(logdir):
             makedirs(logdir)
+        config["logging"]["logdir"] = logdir
 
     logging.info(f"Will be logging into {logdir}")
 
-    # Copy the config file into the logdir
     logdir = pathlib.Path(logdir)
-    with open("config.yml", "w") as file:
+    with open(logdir / "config.yml", "w") as file:
         yaml.dump(config, file)
 
     # Make a summary script of the experiment
@@ -231,11 +243,6 @@ def visualize_images(data_loader, model, device, logdir, e, last=False, train=Fa
 
 
 def train(config):
-    """
-    data.delete_folders_with_few_pngs()
-    print("Done")
-    input()
-    """
 
     (
         model,
@@ -287,9 +294,7 @@ def train(config):
             )
         )
 
-        updated = model_checkpoint.update(
-            epoch=e, score=test_loss, seed=seed, wandb_id=wandb.run.id, logdir=logdir
-        )
+        updated = model_checkpoint.update(epoch=e, score=test_loss)
 
         logging.info(
             "[%d/%d] Test loss : %.3f %s"
@@ -369,12 +374,24 @@ def test(config):
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
-    if len(sys.argv) != 3:
-        logging.error(f"Usage : {sys.argv[0]} config.yaml <train|test>")
-        sys.exit(-1)
-
-    logging.info("Loading {}".format(sys.argv[1]))
-    config = yaml.safe_load(open(sys.argv[1], "r"))
+    if sys.argv[2] not in ["train", "retrain", "test"]:
+        if sys.argv[2] == "retrain" and len(sys.argv) != 5:
+            logging.error(f"Usage : {sys.argv[0]} config.yaml retrain path_to_run")
+            sys.exit(-1)
+        elif len(sys.argv) != 3:
+            logging.error(f"Usage : {sys.argv[0]} config.yaml <train|test>")
+            sys.exit(-1)
 
     command = sys.argv[2]
+    logging.info("Loading {}".format(sys.argv[1]))
+
+    if command == "retrain":
+        path_to_run = sys.argv[3]
+        config = yaml.safe_load(open(path_to_run + "/config.yml", "r"))
+        config["pretrained"] = True
+        command = "train"
+    else:
+        config = yaml.safe_load(open(sys.argv[1], "r"))
+        config["pretrained"] = False
+
     eval(f"{command}(config)")

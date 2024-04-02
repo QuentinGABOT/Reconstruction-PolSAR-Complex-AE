@@ -858,19 +858,16 @@ def get_dataloaders(data_config, use_cuda):
     return train_loader, valid_loader
 
 
-def delete_folders_with_few_pngs(min_png_count=10, root_path=None):
+def delete_folders_with_few_pngs(log_path, min_png_count=20):
     """
     Deletes folders under `root_path` containing fewer than `min_png_count` .png files.
 
     :param root_path: Path to the directory to search through.
     :param min_png_count: Minimum number of .png files a folder must contain to be kept.
     """
-    if root_path is None:
-        root_path = (
-            "/home/qgabot/Documents/complex-valued-generarive-ai-for-sar-imaging/logs"
-        )
-    for folder_name in os.listdir(root_path):
-        folder_path = os.path.join(root_path, folder_name)
+
+    for folder_name in os.listdir(log_path):
+        folder_path = os.path.join(log_path, folder_name)
         if os.path.isdir(folder_path):  # Check if it's a directory
             png_files = [
                 file for file in os.listdir(folder_path) if file.endswith(".png")

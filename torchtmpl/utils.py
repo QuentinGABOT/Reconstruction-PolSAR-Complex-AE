@@ -272,7 +272,7 @@ class ModelCheckpoint(object):
         """
         return self.best_score is None or score > self.best_score
 
-    def update(self, score: float, epoch: int, seed: int, wandb_id, logdir) -> bool:
+    def update(self, score: float, epoch: int) -> bool:
         """
         If the provided score is better than the best score registered so far,
         saves the model's parameters on disk as a pytorch tensor
@@ -293,9 +293,6 @@ class ModelCheckpoint(object):
                     "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "loss": score,
-                    "seed": seed,
-                    "wandb_id": wandb_id,
-                    "logdir": logdir,
                 },
                 os.path.join(self.savepath, "best_model.pt"),
             )
