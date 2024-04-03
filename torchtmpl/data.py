@@ -16,8 +16,7 @@ import torch.nn as nn
 import torch.utils.data
 from torchvision import transforms
 
-from torchcvnn.datasets.polsf import PolSFDataset
-from torchcvnn.datasets import ALOSDataset
+from torchcvnn.datasets import ALOSDataset, PolSFDataset, Bretigny
 
 
 class LogAmplitudeTransform:
@@ -27,17 +26,44 @@ class LogAmplitudeTransform:
 
     def __call__(self, element):
 
-        tensor = torch.as_tensor(
-            np.stack(
-                (
-                    element["HH"],
-                    (element["HV"] + element["VH"]) / 2,
-                    element["VV"],
-                ),
-                axis=-1,
-            ).transpose(2, 0, 1),
-            dtype=torch.complex64,
-        )  # à faire valider
+        if isinstance(element, np.ndarray):
+            tensor = torch.as_tensor(
+                np.stack(
+                    (
+                        element[0],
+                        element[1],
+                        element[2],
+                    ),
+                    axis=-1,
+                ).transpose(2, 0, 1),
+                dtype=torch.complex64,
+            )
+        elif isinstance(element, dict):
+            if len(element) == 3:
+                tensor = torch.as_tensor(
+                    np.stack(
+                        (
+                            element["HH"],
+                            element["HV"],
+                            element["VV"],
+                        ),
+                        axis=-1,
+                    ).transpose(2, 0, 1),
+                    dtype=torch.complex64,
+                )
+            elif len(element) == 4:
+                tensor = torch.as_tensor(
+                    np.stack(
+                        (
+                            element["HH"],
+                            (element["HV"] + element["VH"]) / 2,
+                            element["VV"],
+                        ),
+                        axis=-1,
+                    ).transpose(2, 0, 1),
+                    dtype=torch.complex64,
+                )
+
         new_tensor = tensor
         m = 2e-2
         M = 40
@@ -804,39 +830,42 @@ def get_dataloaders(data_config, use_cuda):
     valid_ratio = data_config["valid_ratio"]
     batch_size = data_config["batch_size"]
     num_workers = data_config["num_workers"]
+    name_dataset = data_config["dataset"]["name"]
+    trainpath = data_config["dataset"]["trainpath"]
 
     logging.info("  - Dataset creation")
 
     input_transform = LogAmplitudeTransform(data_config["characteristics"])
 
-    base_dataset = ALOSDataset(
-        volpath=pathlib.Path(data_config["trainpath"])
-        / "VOL-ALOS2044980750-150324-HBQR1.1__A",
-        patch_size=img_size,
-        patch_stride=img_stride,
-        transform=input_transform,
-        crop_coordinates=((start_row, start_col), (n_rows, n_cols)),
-    )
+    if data_config["dataset"]["name"] == "Bretigny":
+        train_dataset = eval(
+            f"{data_config['dataset']['name']}(root=trainpath, fold='train', transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+        )
+        valid_dataset = eval(
+            f"{data_config['dataset']['name']}(root=trainpath, fold='valid', transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+        )
+        logging.info(f"  - I loaded {len(train_dataset) + len(valid_dataset)} samples")
 
-    """
-    base_dataset = PolSFDataset(
-        root=data_config["trainpath"],
-        transform=input_transform,
-        patch_size=img_size,
-        patch_stride=img_stride,
-    )
-    """
+    else:
+        if data_config["dataset"]["name"] == "ALOSDataset":
+            trainpath = pathlib.Path(trainpath) / "VOL-ALOS2044980750-150324-HBQR1.1__A"
+            base_dataset = eval(
+                f"{name_dataset}(volpath=trainpath, transform=input_transform, crop_coordinates=((start_row, start_col), (n_rows, n_cols)), patch_size=img_size, patch_stride=img_stride)"
+            )
+        elif data_config["dataset"]["name"] == "PolSFDataset":
+            base_dataset = eval(
+                f"{data_config['dataset']['name']}(root=trainpath, transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+            )
+        logging.info(f"  - I loaded {len(base_dataset)} samples")
 
-    logging.info(f"  - I loaded {len(base_dataset)} samples")
+        indices = list(range(len(base_dataset)))
+        random.shuffle(indices)
+        num_valid = int(valid_ratio * len(indices))
+        train_indices = indices[num_valid:]
+        valid_indices = indices[:num_valid]
 
-    indices = list(range(len(base_dataset)))
-    random.shuffle(indices)
-    num_valid = int(valid_ratio * len(indices))
-    train_indices = indices[num_valid:]
-    valid_indices = indices[:num_valid]
-
-    train_dataset = torch.utils.data.Subset(base_dataset, train_indices)
-    valid_dataset = torch.utils.data.Subset(base_dataset, valid_indices)
+        train_dataset = torch.utils.data.Subset(base_dataset, train_indices)
+        valid_dataset = torch.utils.data.Subset(base_dataset, valid_indices)
 
     # Build the dataloaders
     train_loader = torch.utils.data.DataLoader(

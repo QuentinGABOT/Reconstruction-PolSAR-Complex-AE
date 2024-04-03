@@ -169,7 +169,7 @@ def load(config):
         yaml.dump(config, file)
 
     # Make a summary script of the experiment
-    if next(iter(train_loader)).shape == 2:
+    if len(next(iter(train_loader))) == 2:
         input_size = next(iter(train_loader))[0].shape
     else:
         input_size = next(iter(train_loader)).shape
@@ -186,8 +186,8 @@ def load(config):
         + "## Loss\n\n"
         + f"{loss}\n\n"
         + "## Datasets : \n"
-        + f"Train : {train_loader.dataset.dataset}\n"
-        + f"Validation : {valid_loader.dataset.dataset}"
+        + f"Train : {train_loader.dataset}\n"
+        + f"Validation : {valid_loader.dataset}"
     )
 
     with open(logdir / "summary.txt", "w", encoding="utf-8") as f:
@@ -206,7 +206,6 @@ def load(config):
         device,
         input_size,
         epoch,
-        seed,
         wandb_log,
         logdir,
     )
@@ -255,7 +254,6 @@ def train(config):
         device,
         input_size,
         epoch,
-        seed,
         wandb_log,
         logdir,
     ) = load(config)
@@ -367,7 +365,6 @@ def test(config):
         device,
         input_size,
         epoch,
-        seed,
         wandb_log,
         logdir,
     ) = load(config)
