@@ -67,7 +67,7 @@ def load(config):
         config["seed"] = seed
         seed_everything(seed)
 
-    #dt.delete_folders_with_few_pngs(log_path=log_path)
+    # dt.delete_folders_with_few_pngs(log_path=log_path)
 
     cdtype = torch.complex64
     use_cuda = torch.cuda.is_available()
@@ -213,6 +213,8 @@ def load(config):
 
 
 def visualize_images(data_loader, model, device, logdir, e, last=False, train=False):
+
+    model.eval()
     # Sample 5 images and their generated counterparts
     img_datasets = []
     img_gens = []
