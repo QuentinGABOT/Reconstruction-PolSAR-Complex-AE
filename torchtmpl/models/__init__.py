@@ -1,5 +1,6 @@
 # Local imports
 
+from .complex_autoencoder_without_dense.model import AutoEncoderWD
 from .complex_autoencoder.model import AutoEncoder
 from .complex_unet.model import UNet
 from .complex_vae.model import VAE

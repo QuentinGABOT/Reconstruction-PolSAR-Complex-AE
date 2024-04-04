@@ -3,7 +3,7 @@
 # Standard imports
 import logging
 import sys
-from os import path, makedirs
+from os import path, makedirs, path
 import pathlib
 import shutil
 import random
@@ -25,7 +25,7 @@ from . import models
 from . import optim
 from . import utils
 import torchtmpl as tl
-from torchtmpl.models import VAE, UNet, AutoEncoder
+from torchtmpl.models import VAE, UNet, AutoEncoder, AutoEncoderWD
 
 
 def init_weights(m):
@@ -99,7 +99,7 @@ def load(config):
 
     # Load the checkpoint if needed
     if config["pretrained"]:
-        checkpoint_path = log_path + "/best_model.pt"
+        checkpoint_path = log_path + "/last_model.pt"
         checkpoint = torch.load(checkpoint_path)
         logging.info(f"Loading checkpoint from {checkpoint_path}")
 
@@ -304,6 +304,17 @@ def train(config):
                 test_loss,
                 "[>> BETTER <<]" if updated else "",
             )
+        )
+        model.eval()
+
+        torch.save(
+            {
+                "epoch": e,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "loss": train_loss,
+            },
+            path.join(logdir, "last_model.pt"),
         )
 
         # Update the dashboard
