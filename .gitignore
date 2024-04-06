@@ -41,3 +41,4 @@ configs/*
 # Slurm
 logslurms
 job.sbatch
+submit-slurm.py
