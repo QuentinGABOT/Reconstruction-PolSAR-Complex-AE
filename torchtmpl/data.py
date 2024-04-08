@@ -9,7 +9,10 @@ import os
 import glob
 import shutil
 import pathlib
-
+from matplotlib.colors import ListedColormap, BoundaryNorm
+import matplotlib.patches as mpatches
+from sklearn.metrics import confusion_matrix, accuracy_score
+import seaborn as sns
 
 import torch
 import torch.nn as nn
@@ -574,7 +577,7 @@ def h_alpha(pauli_radar_image):
     H_alpha = np.zeros((s1 - (son - 1), s2 - (son - 1), 2))
 
     ### This will contain the original classes after the H alpha initialization.
-    classes_H_alpha_original = np.zeros((s1 - (son - 1), s2 - (son - 1)))
+    classes_H_alpha_original = np.zeros((s1 - (son - 1), s2 - (son - 1)), dtype=int)
 
     ### This is the image containing as pixels the local covariances 'stacked up'.
     ### Since a part of the edge is lost, it is slightly smaller than the original image.
@@ -635,17 +638,21 @@ def h_alpha(pauli_radar_image):
     return classes_H_alpha_original
 
 
-def show_images(samples, generated, image_path, last):
+def show_images(samples, generated, image_path, last=False):
+
     num_samples = len(samples)
     num_channels = samples[0].shape[0]
 
     if last:
-        ncols = 11 + 4 * num_channels
+        ncols = 12 + 4 * num_channels
     else:
-        ncols = 11
+        ncols = 12
 
     fig, axes = plt.subplots(
-        nrows=num_samples, ncols=ncols, figsize=(5 * ncols, 5 * num_samples)
+        nrows=num_samples,
+        ncols=ncols,
+        figsize=(5 * ncols, 5 * num_samples),
+        constrained_layout=True,
     )
     axes = np.atleast_2d(axes)  # Ensure axes is a 2D array for consistency
     channels = ["HH", "HV", "VV"]
@@ -718,11 +725,24 @@ def show_images(samples, generated, image_path, last):
         """
 
         # Compute pixel-wise amplitude difference and plot histogram in the same figure
-        mse_values = np.abs(img_dataset_trans) - np.abs(
-            img_gen_trans
-        )  # we don't use the equalize output due to the transform applied to the amplitude
+        mse_values = (
+            np.abs(img_dataset_trans) - np.abs(img_gen_trans)
+        ).flatten()  # we don't use the equalize output due to the transform applied to the amplitude
 
-        axes[i][idx].hist(mse_values.flatten(), bins=100, alpha=0.75)
+        # Calculate the 5th and 95th quantiles
+        q5, q95 = np.percentile(mse_values, [5, 95])
+
+        # Filter the data
+        filtered_data = mse_values[(mse_values > q5) & (mse_values < q95)]
+
+        # Plot the histogram of the filtered data
+
+        axes[i][idx].hist(
+            filtered_data,
+            bins=100,
+            alpha=0.75,
+        )
+
         axes[i][idx].set_title(f"Amplitude Difference Histogram {i+1}")
         axes[i][idx].set_xlabel("Amplitude Difference Value")
         axes[i][idx].set_ylabel("Frequency")
@@ -751,30 +771,86 @@ def show_images(samples, generated, image_path, last):
         axes[i][idx].set_ylabel("Frequency")
         idx += 1
 
+        # Define a custom color map for classes 1 through 9
+        class_colors = {
+            0: "black",
+            1: "green",
+            2: "yellow",
+            4: "blue",
+            5: "pink",
+            6: "purple",
+            7: "red",
+            8: "brown",
+            9: "gray",
+        }
+
+        # Generate a custom color map from the class_colors dictionary
+        cmap = ListedColormap([i for i in class_colors.values()])
+
+        # Create bounds and a normalization for the colormap
+        bounds = list(class_colors.keys())
+        norm = BoundaryNorm(bounds, cmap.N)
+        # Create a legend for the classes
+        patches = [
+            mpatches.Patch(color=class_colors[i], label=f"Class {i}")
+            for i in class_colors
+        ]
+
+        h_alpha_original = h_alpha(pauli_img_dataset)
+
         ### Plot the H - alpha initialization, i.e. the mask of classes assigend to the pixels according to the H - alpha decomposition.
-        axes[i][idx].imshow(
-            h_alpha(pauli_img_dataset), origin="lower", cmap="tab10", vmin=1, vmax=9
-        )
+        axes[i][idx].imshow(h_alpha_original, origin="lower", cmap=cmap, norm=norm)
+        axes[i][idx].legend(handles=patches, bbox_to_anchor=(1.05, 1), loc="upper left")
         axes[i][idx].set_title(f"H_alpha dataset {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
         idx += 1
 
-        axes[i][idx].imshow(
-            h_alpha(pauli_img_gen), origin="lower", cmap="tab10", vmin=1, vmax=9
-        )
+        h_alpha_gen = h_alpha(pauli_img_gen)
+
+        axes[i][idx].imshow(h_alpha_gen, origin="lower", cmap=cmap, norm=norm)
+        axes[i][idx].legend(handles=patches, bbox_to_anchor=(1.05, 1), loc="upper left")
         axes[i][idx].set_title(f"H_alpha generated {i+1}")
         axes[i][idx].axis("off")  # Turn off axes for image plot
         idx += 1
 
+        print(
+            "Accuracy between the H_alpha labels is: "
+            + str(
+                round(
+                    100
+                    * accuracy_score(h_alpha_original.flatten(), h_alpha_gen.flatten()),
+                    3,
+                )
+            )
+        )
+        # confusion matrix
+        cm = confusion_matrix(
+            h_alpha_original.flatten(), h_alpha_gen.flatten(), normalize="true"
+        ).round(decimals=3)
+        sns.heatmap(
+            cm,
+            annot=True,
+            fmt=".2g",
+            cmap="hot",
+            ax=axes[i][idx],
+            xticklabels=list(class_colors.keys()),
+            yticklabels=list(class_colors.keys()),
+        )
+        axes[i][idx].set_xlabel("Reconstructed H_alpha classes")
+        axes[i][idx].set_ylabel("Original H_alpha classes")
+        axes[i][idx].set_title("Confusion Matrix")
+        idx += 1
+
+        # Compute Fourier transforms for amplitude and phase for each channel
+        dataset_amplitude_ft, dataset_phase_vectors = (
+            plot_fourier_transform_amplitude_phase(img_dataset)
+        )
+        generated_amplitude_ft, generated_phase_vectors = (
+            plot_fourier_transform_amplitude_phase(img_gen)
+        )
+
         # If last, continue with the original functionality for phase and FT amplitude images
         if last:
-            # Compute Fourier transforms for amplitude and phase for each channel
-            dataset_amplitude_ft, dataset_phase_vectors = (
-                plot_fourier_transform_amplitude_phase(img_dataset)
-            )
-            generated_amplitude_ft, generated_phase_vectors = (
-                plot_fourier_transform_amplitude_phase(img_gen)
-            )
 
             for ch in range(num_channels):
                 # Plot Fourier Transforms of the amplitude and phase for dataset and generated images
@@ -825,8 +901,8 @@ def get_dataloaders(data_config, use_cuda):
     img_stride = (data_config["img_stride"], data_config["img_stride"])
     start_row = data_config["crop"]["start_row"]
     start_col = data_config["crop"]["start_col"]
-    n_rows = data_config["crop"]["n_rows"]
-    n_cols = data_config["crop"]["n_cols"]
+    end_row = data_config["crop"]["end_row"]
+    end_col = data_config["crop"]["end_col"]
     valid_ratio = data_config["valid_ratio"]
     batch_size = data_config["batch_size"]
     num_workers = data_config["num_workers"]
@@ -850,7 +926,7 @@ def get_dataloaders(data_config, use_cuda):
         if data_config["dataset"]["name"] == "ALOSDataset":
             trainpath = pathlib.Path(trainpath) / "VOL-ALOS2044980750-150324-HBQR1.1__A"
             base_dataset = eval(
-                f"{name_dataset}(volpath=trainpath, transform=input_transform, crop_coordinates=((start_row, start_col), (n_rows, n_cols)), patch_size=img_size, patch_stride=img_stride)"
+                f"{name_dataset}(volpath=trainpath, transform=input_transform, crop_coordinates=((start_row, start_col), (end_row, end_col)), patch_size=img_size, patch_stride=img_stride)"
             )
         elif data_config["dataset"]["name"] == "PolSFDataset":
             base_dataset = eval(
@@ -885,6 +961,96 @@ def get_dataloaders(data_config, use_cuda):
     )
 
     return train_loader, valid_loader
+
+
+def get_full_image_dataloader(data_config, use_cuda):
+    img_size = (data_config["img_size"], data_config["img_size"])
+    img_stride = (data_config["img_stride"], data_config["img_stride"])
+    start_row = data_config["crop"]["start_row"]
+    start_col = data_config["crop"]["start_col"]
+    end_row = data_config["crop"]["end_row"]
+    end_col = data_config["crop"]["end_col"]
+    valid_ratio = data_config["valid_ratio"]
+    batch_size = data_config["batch_size"]
+    num_workers = data_config["num_workers"]
+    name_dataset = data_config["dataset"]["name"]
+    trainpath = data_config["dataset"]["trainpath"]
+
+    logging.info("  - Dataset creation")
+
+    input_transform = LogAmplitudeTransform(data_config["characteristics"])
+
+    if data_config["dataset"]["name"] == "Bretigny":
+        train_dataset = eval(
+            f"{data_config['dataset']['name']}(root=trainpath, fold='train', transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+        )
+        valid_dataset = eval(
+            f"{data_config['dataset']['name']}(root=trainpath, fold='valid', transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+        )
+        logging.info(f"  - I loaded {len(train_dataset) + len(valid_dataset)} samples")
+
+    else:
+        if data_config["dataset"]["name"] == "ALOSDataset":
+            trainpath = pathlib.Path(trainpath) / "VOL-ALOS2044980750-150324-HBQR1.1__A"
+            base_dataset = eval(
+                f"{name_dataset}(volpath=trainpath, transform=input_transform, crop_coordinates=((start_row, start_col), (end_row, end_col)), patch_size=img_size, patch_stride=img_stride)"
+            )
+        elif data_config["dataset"]["name"] == "PolSFDataset":
+            base_dataset = eval(
+                f"{data_config['dataset']['name']}(root=trainpath, transform=input_transform, patch_size=img_size, patch_stride=img_stride)"
+            )
+        logging.info(f"  - I loaded {len(base_dataset)} samples")
+
+    # Build the dataloaders
+    data_loader = torch.utils.data.DataLoader(
+        base_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=use_cuda,
+    )
+
+    return data_loader
+
+
+def reassemble_image(
+    segments,
+    nb_cols,
+    nb_rows,
+    num_channels,
+    segment_size,
+):
+    """
+    Reassembles the image segments back into a single image, starting with the rows.
+
+    Args:
+    - segments: A list of 3D tensors representing image segments.
+    - n_cols: The number of columns in the original image.
+    - n_rows: The number of rows in the original image.
+    - num_channels: The number of channels in the image.
+    - segment_size: The size of each segment (default is 128x128).
+
+    Returns:
+    - A 3D tensor representing the reassembled image.
+    """
+    # Correct the shape of the reassembled image to match typical (height, width, channels) format
+    reassembled_image = np.zeros((num_channels, nb_rows, nb_cols), dtype=np.complex64)
+    segment_index = 0
+    for h in range(0, nb_rows, segment_size):
+        for w in range(0, nb_cols, segment_size):
+            if h + segment_size <= nb_rows and w + segment_size <= nb_cols:
+                # Adjust indexing to correctly place segments based on row and column
+                reassembled_image[:, h : h + segment_size, w : w + segment_size] = (
+                    segments[segment_index]
+                )
+                segment_index += 1
+
+    return [reassembled_image]
+
+
+# The function call is commented out to prevent execution in this environment.
+# segments = [np.random.rand(128, 128, 3) for _ in range(10)]  # Example segment list
+# reassembled_image = reassemble_image(segments, 1024, 768, 3, 128)
 
 
 def delete_folders_with_few_pngs(log_path, min_png_count=20):

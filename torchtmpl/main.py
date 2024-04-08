@@ -18,6 +18,7 @@ import torchinfo.torchinfo as torchinfo
 import torchcvnn.nn.modules as c_nn
 from PIL import Image
 import numpy as np
+import tqdm as tqdm
 
 # Local imports
 from . import data as dt
@@ -367,41 +368,113 @@ def train(config):
 
 
 def test(config):
-    (
-        model,
-        optimizer,
-        loss,
-        train_loader,
-        valid_loader,
-        device,
-        input_size,
-        epoch,
-        wandb_log,
-        logdir,
-    ) = load(config)
+
+    log_path = config["logging"]["logdir"]
+
+    cdtype = torch.complex64
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda") if use_cuda else torch.device("cpu")
+
+    # Build the dataloaders
+    logging.info("= Building the dataloaders")
+    data_config = config["data"]
+    data_config["batch_size"] = 1
+
+    data_loader = dt.get_full_image_dataloader(data_config, use_cuda)
+
+    # Load the checkpoint if needed
+    if config["pretrained"]:
+        checkpoint_path = log_path + "/best_model.pt"
+        checkpoint = torch.load(checkpoint_path)
+        logging.info(f"Loading checkpoint from {checkpoint_path}")
+
+    # Build the model
+    logging.info("= Model")
+
+    model = models.build_model(config)
+    model.apply(init_weights)
+
+    if config["pretrained"]:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        raise ValueError("No pretrained model available")
+
+    model.to(device)
+
+    if config["pretrained"]:
+        logdir = log_path
+    else:
+        raise ValueError("No pretrained model available")
+
+    logging.info(f"Will be logging into {logdir}")
+
+    logdir = pathlib.Path(logdir)
+
+    orginal_tensors = []
+    for data in tqdm.tqdm(data_loader):
+        if isinstance(data, tuple) or isinstance(data, list):
+            inputs, labels = data
+        else:
+            inputs = data
+        orginal_tensors.append(data.cpu().detach().numpy())
+
+    original_image = dt.reassemble_image(
+        segments=orginal_tensors,
+        nb_cols=config["data"]["crop"]["end_col"] - config["data"]["crop"]["start_col"],
+        nb_rows=config["data"]["crop"]["end_row"] - config["data"]["crop"]["start_row"],
+        num_channels=config["data"]["num_channels"],
+        segment_size=config["data"]["img_size"],
+    )
+
+    # Test
+    reconstructed_tensors = utils.one_forward(
+        model=model,
+        loader=data_loader,
+        device=device,
+    )
+
+    reconstructed_image = dt.reassemble_image(
+        segments=reconstructed_tensors,
+        nb_cols=config["data"]["crop"]["end_col"] - config["data"]["crop"]["start_col"],
+        nb_rows=config["data"]["crop"]["end_row"] - config["data"]["crop"]["start_row"],
+        num_channels=config["data"]["num_channels"],
+        segment_size=config["data"]["img_size"],
+    )
+
+    dt.show_images(
+        samples=original_image,
+        generated=reconstructed_image,
+        image_path=logdir / f"full_images.png",
+        last=False,
+    )
 
 
 if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 
     if sys.argv[2] not in ["train", "retrain", "test"]:
-        if sys.argv[2] == "retrain" and len(sys.argv) != 5:
-            logging.error(f"Usage : {sys.argv[0]} config.yaml retrain path_to_run")
-            sys.exit(-1)
-        elif len(sys.argv) != 3:
-            logging.error(f"Usage : {sys.argv[0]} config.yaml <train|test>")
-            sys.exit(-1)
+        if sys.argv[2] == "train":
+            if len(sys.argv) != 3:
+                logging.error(f"Usage : {sys.argv[0]} config.yaml train")
+                sys.exit(-1)
+        else:
+            if len(sys.argv) != 5:
+                logging.error(
+                    f"Usage : {sys.argv[0]} config.yaml retrain|test path_to_run"
+                )
+                sys.exit(-1)
 
     command = sys.argv[2]
     logging.info("Loading {}".format(sys.argv[1]))
 
-    if command == "retrain":
+    if command == "train":
+        config = yaml.safe_load(open(sys.argv[1], "r"))
+        config["pretrained"] = False
+    else:
         path_to_run = sys.argv[3]
         config = yaml.safe_load(open(path_to_run + "/config.yml", "r"))
         config["pretrained"] = True
-        command = "train"
-    else:
-        config = yaml.safe_load(open(sys.argv[1], "r"))
-        config["pretrained"] = False
+        if command == "retrain":
+            command = "train"
 
     eval(f"{command}(config)")

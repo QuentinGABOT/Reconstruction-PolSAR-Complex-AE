@@ -220,6 +220,34 @@ def test_epoch(
     )
 
 
+def one_forward(
+    model,
+    loader,
+    device,
+):
+
+    outputs = []
+    model.eval()
+
+    with torch.no_grad():
+        for data in tqdm.tqdm(loader):
+            if isinstance(data, tuple) or isinstance(data, list):
+                inputs, labels = data
+            else:
+                inputs = data
+            inputs = Variable(inputs).to(device)
+            # Forward propagate through the model
+
+            if isinstance(model, VAE):
+                pred_outputs, mu, sigma, delta = model(inputs)
+            else:
+                pred_outputs = model(inputs)
+
+            outputs.append(pred_outputs.cpu().detach().numpy())
+
+    return outputs
+
+
 class ModelCheckpoint(object):
     def __init__(
         self,
