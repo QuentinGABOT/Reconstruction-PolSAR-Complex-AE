@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 
 from torchtmpl.data import get_dataloaders
 from .losses import ComplexVAELoss, ComplexVAEPhaseLoss
-from torchtmpl.models import VAE, UNet, AutoEncoder
+from torchtmpl.models import AutoEncoderWD
 
 # import torch.onnx
 
@@ -67,11 +67,6 @@ def train_epoch(
     model.train()
 
     loss_avg = 0
-    recon_loss_avg = 0
-    kld_avg = 0
-    mu_avg = 0
-    sigma_avg = 0
-    delta_avg = 0
 
     num_samples = 0
     gradient_norm = 0
@@ -83,30 +78,9 @@ def train_epoch(
 
         inputs = Variable(inputs, requires_grad=False).to(device)
         # Forward propagate through the model
-        if isinstance(model, VAE):
-            pred_outputs, mu, sigma, delta = model(inputs)
-        else:
-            pred_outputs = model(inputs)
+        pred_outputs = model(inputs)
 
-        if isinstance(f_loss, ComplexVAELoss) or isinstance(
-            f_loss, ComplexVAEPhaseLoss
-        ):
-            loss, recon_loss, kld, mu, sigma, delta = f_loss(
-                x=inputs,
-                recon_x=pred_outputs,
-                mu=mu,
-                sigma=sigma,
-                delta=delta,
-                kld_weight=config["loss"]["kld_weight"],
-            )
-            recon_loss_avg += inputs.shape[0] * recon_loss.item()
-            kld_avg += inputs.shape[0] * kld.item()
-
-            mu_avg += inputs.shape[0] * mu.item()
-            sigma_avg += inputs.shape[0] * sigma.item()
-            delta_avg += inputs.shape[0] * delta.item()
-        else:
-            loss = f_loss(pred_outputs, inputs)
+        loss = f_loss(pred_outputs, inputs)
 
         # Backward pass and update
         optim.zero_grad()
@@ -133,11 +107,6 @@ def train_epoch(
     return (
         loss_avg / num_samples,
         gradient_norm / num_samples,
-        recon_loss_avg / num_samples,
-        kld_avg / num_samples,
-        np.abs(mu_avg / num_samples),
-        np.abs(sigma_avg / num_samples),
-        np.abs(delta_avg / num_samples),
     )
 
 
@@ -165,11 +134,6 @@ def test_epoch(
     model.eval()
 
     loss_avg = 0
-    recon_loss_avg = 0
-    kld_avg = 0
-    mu_avg = 0
-    sigma_avg = 0
-    delta_avg = 0
 
     num_samples = 0
     with torch.no_grad():
@@ -181,43 +145,15 @@ def test_epoch(
             inputs = Variable(inputs).to(device)
             # Forward propagate through the model
 
-            if isinstance(model, VAE):
-                pred_outputs, mu, sigma, delta = model(inputs)
-            else:
-                pred_outputs = model(inputs)
-            if isinstance(f_loss, ComplexVAELoss) or isinstance(
-                f_loss, ComplexVAEPhaseLoss
-            ):
-                loss, recon_loss, kld, mu, sigma, delta = f_loss(
-                    x=inputs,
-                    recon_x=pred_outputs,
-                    mu=mu,
-                    sigma=sigma,
-                    delta=delta,
-                    kld_weight=config["loss"]["kld_weight"],
-                )
-                recon_loss_avg += inputs.shape[0] * recon_loss.item()
-                kld_avg += inputs.shape[0] * kld.item()
+            pred_outputs = model(inputs)
 
-                mu_avg += inputs.shape[0] * mu.item()
-                sigma_avg += inputs.shape[0] * sigma.item()
-                delta_avg += inputs.shape[0] * delta.item()
-
-            else:
-                loss = f_loss(pred_outputs, inputs)
+            loss = f_loss(pred_outputs, inputs)
 
             num_samples += inputs.shape[0]
 
             loss_avg += inputs.shape[0] * loss.item()
 
-    return (
-        loss_avg / num_samples,
-        recon_loss_avg / num_samples,
-        kld_avg / num_samples,
-        np.abs(mu_avg / num_samples),
-        np.abs(sigma_avg / num_samples),
-        np.abs(delta_avg / num_samples),
-    )
+    return loss_avg / num_samples
 
 
 def one_forward(
@@ -238,10 +174,7 @@ def one_forward(
             inputs = Variable(inputs).to(device)
             # Forward propagate through the model
 
-            if isinstance(model, VAE):
-                pred_outputs, mu, sigma, delta = model(inputs)
-            else:
-                pred_outputs = model(inputs)
+            pred_outputs = model(inputs)
 
             outputs.append(pred_outputs.cpu().detach().numpy())
 

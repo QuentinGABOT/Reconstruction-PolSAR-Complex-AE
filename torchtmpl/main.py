@@ -26,7 +26,7 @@ from . import models
 from . import optim
 from . import utils
 import torchtmpl as tl
-from torchtmpl.models import VAE, UNet, AutoEncoder, AutoEncoderWD
+from torchtmpl.models import AutoEncoderWD
 
 
 def init_weights(m):
@@ -225,12 +225,7 @@ def visualize_images(data_loader, model, device, logdir, e, last=False, train=Fa
         else:
             inputs = data
         img_dataset = inputs[random.randint(0, len(inputs) - 1)]
-        if isinstance(model, VAE):
-            img_gen = (
-                model(img_dataset.unsqueeze_(0).to(device))[0].cpu().detach().numpy()
-            )
-        else:
-            img_gen = model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
+        img_gen = model(img_dataset.unsqueeze_(0).to(device)).cpu().detach().numpy()
         img_datasets.append(img_dataset[0, :, :, :].numpy())
         img_gens.append(img_gen[0, :, :, :])
     if train:
@@ -270,11 +265,6 @@ def train(config):
         (
             train_loss,
             gradient_norm,
-            train_recon_loss,
-            train_kld,
-            mu_train,
-            sigma_train,
-            delta_train,
         ) = utils.train_epoch(
             model=model,
             loader=train_loader,
@@ -285,14 +275,12 @@ def train(config):
         )
 
         # Test
-        test_loss, test_recon_loss, test_kld, mu_test, sigma_test, delta_test = (
-            utils.test_epoch(
-                model=model,
-                loader=valid_loader,
-                f_loss=loss,
-                device=device,
-                config=config,
-            )
+        test_loss = utils.test_epoch(
+            model=model,
+            loader=valid_loader,
+            f_loss=loss,
+            device=device,
+            config=config,
         )
 
         updated = model_checkpoint.update(epoch=e, score=test_loss)
@@ -322,16 +310,6 @@ def train(config):
         metrics = {
             "train_loss": train_loss,
             "test_loss": test_loss,
-            "train_MSE_loss": train_recon_loss,
-            "test_MSE_loss": test_recon_loss,
-            "train_KLD": train_kld,
-            "test_KLD": test_kld,
-            "mu_train": mu_train,
-            "sigma_train": sigma_train,
-            "delta_train": delta_train,
-            "mu_test": mu_test,
-            "sigma_test": sigma_test,
-            "delta_test": delta_test,
             "gradient_norm": gradient_norm,
             "epoch": e,
         }
