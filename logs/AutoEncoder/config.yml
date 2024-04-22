@@ -24,7 +24,7 @@ data:
   num_workers: 4
   valid_ratio: 0.2
 logging:
-  logdir: ./logs/AutoEncoderWD_changeling-janeway-893
+  logdir: ./logs/AutoEncoder
   wandb:
     project: gen_cvnn
     run_id: 7qyekz92
