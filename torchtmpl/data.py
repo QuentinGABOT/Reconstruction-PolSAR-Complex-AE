@@ -607,7 +607,13 @@ def h_alpha(pauli_radar_image):
                 p_vector[i] = eigenvalues[i] / np.sum(eigenvalues)
                 alpha_vector[i] = np.arccos(abs(eigenvectors[0, i]))
             H = -np.dot(p_vector, np.log(p_vector))
-            alpha = np.dot(p_vector, alpha_vector) * (180.0 / 3.14159)
+            if H > 1.0:
+                H = 1.0
+            if np.isnan(H):
+                H = 0
+            alpha = np.dot(p_vector, alpha_vector) * (180.0 / np.pi)
+            if alpha > 90:
+                alpha = 90
             H_alpha[k, l, 0] = H
             H_alpha[k, l, 1] = alpha
 
@@ -773,7 +779,6 @@ def show_images(samples, generated, image_path, last=False):
 
         # Define a custom color map for classes 1 through 9
         class_colors = {
-            0: "black",
             1: "green",
             2: "yellow",
             4: "blue",
@@ -831,7 +836,7 @@ def show_images(samples, generated, image_path, last=False):
             cm,
             annot=True,
             fmt=".2g",
-            cmap="hot",
+            cmap="Blues",
             ax=axes[i][idx],
             xticklabels=list(class_colors.keys()),
             yticklabels=list(class_colors.keys()),
@@ -841,16 +846,16 @@ def show_images(samples, generated, image_path, last=False):
         axes[i][idx].set_title("Confusion Matrix")
         idx += 1
 
-        # Compute Fourier transforms for amplitude and phase for each channel
-        dataset_amplitude_ft, dataset_phase_vectors = (
-            plot_fourier_transform_amplitude_phase(img_dataset)
-        )
-        generated_amplitude_ft, generated_phase_vectors = (
-            plot_fourier_transform_amplitude_phase(img_gen)
-        )
-
         # If last, continue with the original functionality for phase and FT amplitude images
         if last:
+
+            # Compute Fourier transforms for amplitude and phase for each channel
+            dataset_amplitude_ft, dataset_phase_vectors = (
+                plot_fourier_transform_amplitude_phase(img_dataset)
+            )
+            generated_amplitude_ft, generated_phase_vectors = (
+                plot_fourier_transform_amplitude_phase(img_gen)
+            )
 
             for ch in range(num_channels):
                 # Plot Fourier Transforms of the amplitude and phase for dataset and generated images
