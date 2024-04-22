@@ -25,9 +25,6 @@ data:
   valid_ratio: 0.2
 logging:
   logdir: ./logs/AutoEncoder
-  wandb:
-    project: gen_cvnn
-    run_id: 7qyekz92
 loss:
   kld_weight: 1
   name: ComplexMSELoss
