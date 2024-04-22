@@ -1,0 +1,44 @@
+data:
+  batch_size: 64
+  characteristics:
+    ch_0:
+      max: 110.79493
+      min: 1.4549588e-05
+    ch_1:
+      max: 80.487
+      min: 5.4477514e-06
+    ch_2:
+      max: 125.859604
+      min: 8.398932e-06
+  crop:
+    end_col: 3200
+    end_row: 7500
+    start_col: 1000
+    start_row: 3000
+  dataset:
+    name: ALOSDataset
+    trainpath: ../datasets/SAN_FRANCISCO_ALOS2
+  img_size: 64
+  img_stride: 64
+  num_channels: 3
+  num_workers: 4
+  valid_ratio: 0.2
+logging:
+  logdir: ./logs
+loss:
+  kld_weight: 1
+  name: ComplexMSELoss
+model:
+  activation: modReLU
+  channels_ratio: 16
+  class: AutoEncoderWD
+  latent_dim: 1024
+  num_layers: 4
+nepochs: 3000
+optim:
+  algo: AdamW
+  params:
+    lr: 0.0005
+    weight_decay: 0.0001
+pretrained: false
+world_size: 4
