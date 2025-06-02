@@ -16,3 +16,6 @@ dependencies = [
 
 [options]
 package_dir = "torchtmpl"
+
+[tool.setuptools]
+py-modules = []
